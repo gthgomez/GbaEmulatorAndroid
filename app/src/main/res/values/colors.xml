@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="flowframe_shell_background">#FFBBE1FA</color>
+    <color name="flowframe_primary">#FF2EC8FF</color>
+    <color name="flowframe_on_primary">#FF061018</color>
+</resources>
