@@ -13,8 +13,12 @@ class GbaApuAudioOutput {
 
   bool start();
   void stop();
-  void write_interleaved_pcm16(const std::int16_t* samples, std::size_t frame_count);
+  void enqueue_interleaved_pcm16(const std::int16_t* samples, std::size_t frame_count);
+  void clear();
+  [[nodiscard]] std::size_t available_frames() const;
   [[nodiscard]] std::uint32_t playback_underruns() const;
+  void set_steady_music_enabled(bool enabled);
+  void set_playback_rate_multiplier(float multiplier);
 
  private:
   GbaApuAudioOutput() = default;

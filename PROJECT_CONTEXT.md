@@ -26,15 +26,20 @@ Open `Project_Android` in Android Studio for composite workspace, or open this f
 ## Invariants
 
 - No ROM, BIOS, or save assets in-repo or APK.
+- Retail/homebrew load uses **BIOS HLE on `load_rom`** (`CoreSession::configure_for_game_boot`):
+  entry PC `0x08000000`, no bundled BIOS file.
 - `BridgeSelfTest` uses the same synthetic 12-byte ROM as `android_core_bridge_test.cpp`.
+- Kotlin on-device self-tests (`RuntimeSelfTest`, `PersistenceSelfTest`) must mirror C++ step budgets in `tests/android_runtime_test.cpp` and `tests/save_state_codec_test.cpp` (e.g. bounded `stepFrame(3)` expects 0 scanlines; full frame uses up to `2_000_000` instruction steps; save-state hash is checked immediately after restore, not after another step).
 - JNI: `GbaCoreBridge` → `android_core_bridge`; `GbaRuntimeBridge` → `AndroidRuntime` (cycle-bounded `step_frame` + RGB565 framebuffer).
 
 ## Implemented (dev shell)
 
 - SAF **Open ROM** with header validation, `EmulatorSession`, `GameScreen` loop, `TouchGameControls`, JNI `stop_reason`
-- Oboe audio playback, cartridge save + save-state SAF export/import
-- Process lifecycle pause on `GameScreen` (`notifyEmulationPaused` + cartridge save flush)
-- Debug overlay (frame ms, PC, stop reason), restart, continue-on-abnormal (debug builds)
+- **GameScreen** primary viewport: `GameViewportSurface` (`SurfaceView` + `Canvas.drawBitmap`); Home dev preview still uses Compose `Image`
+- Oboe ring-buffer audio (SPSC + data callback), `EmulationFramePacer` (~59.727 Hz), direct-select speed chips 1×–4× + Max, Steady Music mode
+- Cartridge save + save-state SAF export/import
+- Process lifecycle pause on `GameScreen` (`notifyEmulationPaused` + cartridge save flush; audio ring clear + pre-roll on resume)
+- Debug overlay (frame ms, PC, cycle delta, speed, batch size, stop reason, PPU `DISPCNT`/non-zero/sample), restart, continue-on-abnormal (debug builds)
 - `nativeGetCartridgeMetadata` for title/game code/save type after load
 
 ## Docs

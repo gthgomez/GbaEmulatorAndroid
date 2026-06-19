@@ -1,9 +1,10 @@
 package com.gba.emulator.shell.ui
 
+import android.content.Context
 import android.util.Log
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -27,13 +29,12 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -43,16 +44,26 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.gba.emulator.shell.ApuAudioEngine
+import com.gba.emulator.shell.AudioPlaybackMode
 import com.gba.emulator.shell.BuildConfig
+import com.gba.emulator.shell.EmulationFramePacer
 import com.gba.emulator.shell.EmulatorSession
 import com.gba.emulator.shell.GbaRuntimeBridge
+import com.gba.emulator.shell.PlaybackSpeedController
 import com.gba.emulator.shell.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val LOG_TAG = "FlowframeEmu"
+private const val WARMUP_STREAK_FOR_MESSAGE = 3
+private const val DEBUG_OVERLAY_AUTO_HIDE_MS = 3_000L
+private const val AUDIT_FRAME = 60
+private const val PREFS_NAME = "gameplay"
+private const val PREFS_SPEED = "playback_speed"
+private const val NON_ZERO_PIXEL_THRESHOLD = 1_000
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,9 +72,13 @@ fun GameScreen(
     romTitle: String,
     onExit: () -> Unit,
 ) {
-    var framebuffer by remember { mutableStateOf<ImageBitmap?>(null) }
+    var hasPresentedFrame by remember { mutableStateOf(false) }
+    var forcedBlankHint by remember { mutableStateOf(false) }
+    var zeroScanlineStreak by remember { mutableIntStateOf(0) }
+    var showWarmupMessage by remember { mutableStateOf(false) }
     var overlayText by remember { mutableStateOf("") }
     var debugOverlay by remember { mutableStateOf("") }
+    var showDebugOverlay by remember { mutableStateOf(BuildConfig.DEBUG) }
     var running by remember { mutableStateOf(true) }
     var pausedByLifecycle by remember { mutableStateOf(false) }
     var ignoreAbnormalStop by remember { mutableStateOf(false) }
@@ -71,26 +86,39 @@ fun GameScreen(
     var buttonMask by remember { mutableIntStateOf(0) }
     var frameCount by remember { mutableIntStateOf(0) }
     var lastFrameNanos by remember { mutableLongStateOf(0L) }
-    val framebufferPresenter = remember { FramebufferPresenter() }
+    var auditLogged by remember { mutableStateOf(false) }
+    var audioMode by remember { mutableStateOf(AudioPlaybackMode.Sync) }
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    var playbackSpeed by remember { mutableStateOf(loadPersistedSpeed(prefs)) }
+    val speedController = remember { PlaybackSpeedController(playbackSpeed) }
+    val framePacer = remember { EmulationFramePacer() }
+    val currentAudioMode by rememberUpdatedState(audioMode)
+    val viewportController = remember { GameViewportSurfaceController() }
     val audioEngine = remember { ApuAudioEngine() }
     val scope = rememberCoroutineScope()
 
     val runtimeErrorTemplate = stringResource(R.string.game_runtime_error)
     val stopReasonTemplate = stringResource(R.string.game_stop_reason)
     val debugOverlayTemplate = stringResource(R.string.game_debug_overlay)
-    val activity = LocalContext.current.findActivity()
+    val loadingGraphicsText = stringResource(R.string.game_loading_graphics)
+    val warmingUpText = stringResource(R.string.game_warming_up)
+    val steadyMusicHelper = stringResource(R.string.game_steady_music_helper)
+    val activity = context.findActivity()
     val window = activity?.window
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    DisposableEffect(lifecycleOwner, session) {
+    DisposableEffect(lifecycleOwner, session, audioEngine) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
                     pausedByLifecycle = true
+                    audioEngine.clear()
                     session.notifyEmulationPaused()
                 }
                 Lifecycle.Event.ON_START -> {
                     pausedByLifecycle = false
+                    audioEngine.preRollSilence()
                 }
                 else -> Unit
             }
@@ -127,10 +155,45 @@ fun GameScreen(
         }
     }
 
+    LaunchedEffect(playbackSpeed) {
+        speedController.setSpeed(playbackSpeed)
+    }
+
+    LaunchedEffect(audioMode, playbackSpeed) {
+        when (audioMode) {
+            AudioPlaybackMode.Sync -> {
+                audioEngine.setSteadyMusicEnabled(false)
+                val rate = if (playbackSpeed == PlaybackSpeedController.PlaybackSpeed.One) {
+                    1f
+                } else {
+                    speedController.playbackRateMultiplier
+                }
+                audioEngine.setPlaybackRateMultiplier(rate)
+            }
+            AudioPlaybackMode.SteadyMusic -> {
+                audioEngine.setSteadyMusicEnabled(true)
+                audioEngine.setPlaybackRateMultiplier(1f)
+            }
+            AudioPlaybackMode.Mute -> {
+                audioEngine.setSteadyMusicEnabled(false)
+                audioEngine.setPlaybackRateMultiplier(1f)
+            }
+        }
+    }
+
+    LaunchedEffect(debugOverlay) {
+        if (!BuildConfig.DEBUG || debugOverlay.isEmpty()) {
+            return@LaunchedEffect
+        }
+        showDebugOverlay = true
+        delay(DEBUG_OVERLAY_AUTO_HIDE_MS)
+        showDebugOverlay = false
+    }
+
     BackHandler(onBack = onExit)
 
-    LaunchedEffect(buttonMask) {
-        if (!isActive || !session.isActive) {
+    LaunchedEffect(buttonMask, hasPresentedFrame) {
+        if (!isActive || !session.isActive || !hasPresentedFrame) {
             return@LaunchedEffect
         }
         withContext(Dispatchers.Default) {
@@ -139,24 +202,92 @@ fun GameScreen(
     }
 
     LaunchedEffect(session, running, pausedByLifecycle, ignoreAbnormalStop, restartGeneration) {
+        framePacer.reset()
+        auditLogged = false
         try {
             while (isActive && running && !pausedByLifecycle && session.isActive) {
                 val frameStart = withFrameNanos { nanos -> nanos }
-                val stepped = withContext(Dispatchers.Default) {
-                    session.stepFrameAndCopy()
-                } ?: break
-                val (frame, pixels) = stepped
+                val wake = framePacer.onWake(frameStart)
+                if (wake.slotsDue == 0) {
+                    continue
+                }
+
+                val stepsToRun = speedController.stepsForWallSlots(wake.slotsDue)
+                if (stepsToRun == 0) {
+                    continue
+                }
+
+                var lastStep: EmulatorSession.PresentedFrameStep? = null
+                var lastBatchFrames = 0
                 withContext(Dispatchers.Default) {
-                    session.drainAudioBatch()?.let { batch ->
-                        audioEngine.queueBatch(batch)
+                    repeat(stepsToRun) {
+                        val step = session.stepFrameAndPresent() ?: return@withContext
+                        lastStep = step
+                        lastBatchFrames = step.audioBatch.size / 2
+                        if (currentAudioMode != AudioPlaybackMode.Mute && step.audioBatch.isNotEmpty()) {
+                            audioEngine.enqueueBatch(step.audioBatch)
+                        }
                     }
                 }
+
+                val presented = lastStep ?: break
+                val frame = presented.frame
+                val pixels = presented.pixels
+
                 when (frame.status) {
                     GbaRuntimeBridge.RuntimeStatus.Ok -> {
-                        framebuffer = withContext(Dispatchers.Default) {
-                            framebufferPresenter.update(pixels)
+                        val videoDiagnostics = if (BuildConfig.DEBUG) {
+                            session.getVideoDiagnostics()
+                        } else {
+                            null
+                        }
+                        val frameBitmap = withContext(Dispatchers.Default) {
+                            viewportController.prepareBitmap(pixels)
+                        }
+                        withContext(Dispatchers.Main) {
+                            viewportController.presentOnSurface(frameBitmap)
+                        }
+                        hasPresentedFrame = true
+                        forcedBlankHint = videoDiagnostics?.forcedBlank == true
+
+                        val hasVisibleContent = frame.frameComplete ||
+                            hasEnoughNonZeroPixels(pixels, videoDiagnostics)
+
+                        if (hasVisibleContent || frame.renderedScanlines > 0) {
+                            zeroScanlineStreak = 0
+                            showWarmupMessage = false
+                        } else {
+                            zeroScanlineStreak += 1
+                            showWarmupMessage = zeroScanlineStreak >= WARMUP_STREAK_FOR_MESSAGE
+                            if (zeroScanlineStreak == WARMUP_STREAK_FOR_MESSAGE) {
+                                Log.w(
+                                    LOG_TAG,
+                                    "no_ppu_render streak=$zeroScanlineStreak steps=${frame.executedSteps} " +
+                                        "status=${frameStatusLabel(frame)} pc=0x${
+                                            frame.finalPc.toUInt().toString(16)
+                                        }",
+                                )
+                            }
                         }
                         frameCount += 1
+                        if (frameCount == AUDIT_FRAME && !auditLogged) {
+                            auditLogged = true
+                            val allZero = pixels.all { it == 0.toShort() }
+                            if (frame.renderedScanlines == 0 || allZero) {
+                                Log.w(
+                                    LOG_TAG,
+                                    "audit_frame60 scanlines=${frame.renderedScanlines} allZero=$allZero " +
+                                        "cyclesDelta=${frame.schedulerCyclesDelta}",
+                                )
+                            }
+                            Log.i(
+                                LOG_TAG,
+                                "audit_audio batchFrames=$lastBatchFrames " +
+                                    "playbackUnderruns=${audioEngine.playbackUnderruns} " +
+                                    "coreUnderruns=${frame.audioUnderruns}",
+                            )
+                        }
+
                         val frameMs = if (lastFrameNanos > 0L) {
                             (frameStart - lastFrameNanos) / 1_000_000.0
                         } else {
@@ -165,18 +296,32 @@ fun GameScreen(
                         lastFrameNanos = frameStart
                         val playbackUnderruns = audioEngine.playbackUnderruns
                         if (BuildConfig.DEBUG) {
+                            val behindLabel = if (wake.behindSchedule) " behind" else ""
+                            val videoSuffix = videoDiagnostics?.let { diag ->
+                                " · DISPCNT=0x${diag.dispcnt.toString(16)} nonZero=${diag.nonZeroPixelCount} " +
+                                    "sample=0x${diag.sampleRgb565.toString(16)}"
+                            }.orEmpty()
                             debugOverlay = String.format(
                                 debugOverlayTemplate,
                                 frameCount,
                                 frameMs,
-                                frame.stopReason.name,
+                                frameStatusLabel(frame),
+                                frame.renderedScanlines,
+                                frame.executedSteps,
                                 frame.finalPc.toUInt().toString(16),
                                 playbackUnderruns,
-                            )
+                                frame.schedulerCyclesDelta,
+                                playbackSpeed.label,
+                                lastBatchFrames,
+                                frame.audioUnderruns,
+                                behindLabel,
+                            ) + videoSuffix
                         }
+
                         if (playbackUnderruns > 0 && overlayText.isEmpty()) {
                             overlayText = "Audio playback underruns: $playbackUnderruns"
                         }
+
                         if (frame.stopReason != GbaRuntimeBridge.StopReason.MaxSteps && !ignoreAbnormalStop) {
                             overlayText = String.format(
                                 stopReasonTemplate,
@@ -189,7 +334,7 @@ fun GameScreen(
                                 LOG_TAG,
                                 "abnormal_stop reason=${frame.stopReason.name} pc=0x${
                                     frame.finalPc.toUInt().toString(16)
-                                } steps=${frame.executedSteps}",
+                                } steps=${frame.executedSteps} scanlines=${frame.renderedScanlines}",
                             )
                             running = false
                         }
@@ -212,11 +357,21 @@ fun GameScreen(
     ) {
         TopAppBar(
             title = {
-                Text(
-                    text = romTitle,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color(0xFFE8EEF3),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = romTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFFE8EEF3),
+                    )
+                    if (playbackSpeed != PlaybackSpeedController.PlaybackSpeed.One) {
+                        Text(
+                            text = playbackSpeed.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFF7EC8FF),
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
             },
             navigationIcon = {
                 IconButton(onClick = onExit) {
@@ -238,6 +393,14 @@ fun GameScreen(
                             ignoreAbnormalStop = false
                             frameCount = 0
                             lastFrameNanos = 0L
+                            hasPresentedFrame = false
+                            forcedBlankHint = false
+                            zeroScanlineStreak = 0
+                            showWarmupMessage = false
+                            auditLogged = false
+                            framePacer.reset()
+                            audioEngine.clear()
+                            audioEngine.preRollSilence()
                             running = true
                             restartGeneration += 1
                         }
@@ -254,6 +417,51 @@ fun GameScreen(
             ),
         )
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF1A2330))
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.game_steady_music),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFB8C4D0),
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = audioMode == AudioPlaybackMode.SteadyMusic,
+                onCheckedChange = { enabled ->
+                    audioMode = if (enabled) {
+                        AudioPlaybackMode.SteadyMusic
+                    } else {
+                        AudioPlaybackMode.Sync
+                    }
+                },
+            )
+        }
+        SpeedSelectorRow(
+            selected = playbackSpeed,
+            onSelect = { speed ->
+                playbackSpeed = speed
+                prefs.edit().putString(PREFS_SPEED, speed.name).apply()
+            },
+        )
+
+        if (audioMode == AudioPlaybackMode.SteadyMusic &&
+            playbackSpeed != PlaybackSpeedController.PlaybackSpeed.One
+        ) {
+            Text(
+                text = steadyMusicHelper,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF8FA3B8),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+            )
+        }
+
         GameViewportFrame(
             screenWidth = GbaRuntimeBridge.SCREEN_WIDTH,
             screenHeight = GbaRuntimeBridge.SCREEN_HEIGHT,
@@ -261,14 +469,25 @@ fun GameScreen(
                 .weight(1f)
                 .fillMaxWidth(),
         ) {
-            framebuffer?.let { bitmap ->
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = stringResource(R.string.framebuffer_content_description),
-                    modifier = Modifier.fillMaxWidth(),
-                    contentScale = ContentScale.Fit,
-                    filterQuality = FilterQuality.None,
+            Box(modifier = Modifier.fillMaxSize()) {
+                GameViewportSurface(
+                    controller = viewportController,
+                    modifier = Modifier.fillMaxSize(),
                 )
+                if (!hasPresentedFrame || showWarmupMessage) {
+                    Text(
+                        text = if (!hasPresentedFrame) {
+                            loadingGraphicsText
+                        } else if (forcedBlankHint && BuildConfig.DEBUG) {
+                            stringResource(R.string.game_debug_forced_blank)
+                        } else {
+                            warmingUpText
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFF8FA3B8),
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
             }
         }
 
@@ -284,7 +503,7 @@ fun GameScreen(
             )
         }
 
-        if (BuildConfig.DEBUG && debugOverlay.isNotEmpty()) {
+        if (BuildConfig.DEBUG && showDebugOverlay && debugOverlay.isNotEmpty()) {
             Text(
                 text = debugOverlay,
                 style = MaterialTheme.typography.bodySmall,
@@ -325,8 +544,48 @@ fun GameScreen(
         }
 
         TouchGameControls(
+            enabled = hasPresentedFrame,
             onMaskChanged = { buttonMask = it },
             modifier = Modifier.background(FlowframeColors.PlayStageBlack),
         )
     }
+}
+
+private fun loadPersistedSpeed(
+    prefs: android.content.SharedPreferences,
+): PlaybackSpeedController.PlaybackSpeed {
+    val stored = prefs.getString(PREFS_SPEED, PlaybackSpeedController.PlaybackSpeed.One.name)
+    return PlaybackSpeedController.PlaybackSpeed.entries.firstOrNull { it.name == stored }
+        ?: PlaybackSpeedController.PlaybackSpeed.One
+}
+
+private fun hasEnoughNonZeroPixels(
+    pixels: ShortArray,
+    diagnostics: GbaRuntimeBridge.VideoDiagnostics?,
+): Boolean {
+    if (diagnostics != null && diagnostics.nonZeroPixelCount > NON_ZERO_PIXEL_THRESHOLD) {
+        return true
+    }
+    var count = 0
+    for (pixel in pixels) {
+        if (pixel != 0.toShort() && ++count > NON_ZERO_PIXEL_THRESHOLD) {
+            return true
+        }
+    }
+    return false
+}
+
+internal fun frameStatusLabel(frame: GbaRuntimeBridge.FrameResult): String {
+    if (frame.frameComplete) {
+        return "FrameComplete"
+    }
+    if (frame.renderedScanlines == 0 &&
+        frame.executedSteps >= EmulatorSession.DEFAULT_MAX_INSTRUCTIONS_PER_FRAME
+    ) {
+        return "MaxSteps"
+    }
+    if (frame.renderedScanlines == 0) {
+        return "StepBudget"
+    }
+    return "Partial(${frame.renderedScanlines})"
 }

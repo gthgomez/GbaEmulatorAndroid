@@ -123,6 +123,15 @@ class EmulatorSession {
         }
     }
 
+    fun getVideoDiagnostics(): GbaRuntimeBridge.VideoDiagnostics? {
+        synchronized(lock) {
+            if (closed.get() || handle == 0L) {
+                return null
+            }
+            return GbaRuntimeBridge.getVideoDiagnostics(handle)
+        }
+    }
+
     fun exportCartridgeSave(): ByteArray? {
         synchronized(lock) {
             if (closed.get() || handle == 0L) {
@@ -172,6 +181,26 @@ class EmulatorSession {
         }
     }
 
+    data class PresentedFrameStep(
+        val frame: GbaRuntimeBridge.FrameResult,
+        val pixels: ShortArray,
+        val audioBatch: ShortArray,
+    )
+
+    fun stepFrameAndPresent(
+        maxInstructionSteps: Int = DEFAULT_MAX_INSTRUCTIONS_PER_FRAME,
+    ): PresentedFrameStep? {
+        synchronized(lock) {
+            if (closed.get() || handle == 0L) {
+                return null
+            }
+            val frame = GbaRuntimeBridge.stepFrame(handle, maxInstructionSteps)
+            val pixels = GbaRuntimeBridge.copyFramebuffer(handle)
+            val audioBatch = GbaRuntimeBridge.drainAudioBatch(handle)
+            return PresentedFrameStep(frame, pixels, audioBatch)
+        }
+    }
+
     fun drainAudioBatch(): ShortArray? {
         synchronized(lock) {
             if (closed.get() || handle == 0L) {
@@ -182,6 +211,6 @@ class EmulatorSession {
     }
 
     companion object {
-        const val DEFAULT_MAX_INSTRUCTIONS_PER_FRAME = 500_000
+        const val DEFAULT_MAX_INSTRUCTIONS_PER_FRAME = 2_000_000
     }
 }

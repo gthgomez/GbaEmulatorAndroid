@@ -31,6 +31,7 @@ import com.gba.emulator.shell.KeypadButtons
 fun TouchGameControls(
     onMaskChanged: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val pressed = remember { mutableStateSetOf<Int>() }
 
@@ -47,21 +48,27 @@ fun TouchGameControls(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         DpadCluster(
+            enabled = enabled,
             onPress = { bit ->
+                if (!enabled) return@DpadCluster
                 pressed.add(bit)
                 updateMask()
             },
             onRelease = { bit ->
+                if (!enabled) return@DpadCluster
                 pressed.remove(bit)
                 updateMask()
             },
         )
         ActionCluster(
+            enabled = enabled,
             onPress = { bit ->
+                if (!enabled) return@ActionCluster
                 pressed.add(bit)
                 updateMask()
             },
             onRelease = { bit ->
+                if (!enabled) return@ActionCluster
                 pressed.remove(bit)
                 updateMask()
             },
@@ -71,31 +78,33 @@ fun TouchGameControls(
 
 @Composable
 private fun DpadCluster(
+    enabled: Boolean,
     onPress: (Int) -> Unit,
     onRelease: (Int) -> Unit,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        ControlButton("L", KeypadButtons.L, onPress, onRelease)
-        ControlButton("UP", KeypadButtons.UP, onPress, onRelease)
+        ControlButton("L", KeypadButtons.L, enabled, onPress, onRelease)
+        ControlButton("UP", KeypadButtons.UP, enabled, onPress, onRelease)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ControlButton("LEFT", KeypadButtons.LEFT, onPress, onRelease)
-            ControlButton("RIGHT", KeypadButtons.RIGHT, onPress, onRelease)
+            ControlButton("LEFT", KeypadButtons.LEFT, enabled, onPress, onRelease)
+            ControlButton("RIGHT", KeypadButtons.RIGHT, enabled, onPress, onRelease)
         }
-        ControlButton("DOWN", KeypadButtons.DOWN, onPress, onRelease)
-        ControlButton("SELECT", KeypadButtons.SELECT, onPress, onRelease, wide = true)
+        ControlButton("DOWN", KeypadButtons.DOWN, enabled, onPress, onRelease)
+        ControlButton("SELECT", KeypadButtons.SELECT, enabled, onPress, onRelease, wide = true)
     }
 }
 
 @Composable
 private fun ActionCluster(
+    enabled: Boolean,
     onPress: (Int) -> Unit,
     onRelease: (Int) -> Unit,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        ControlButton("R", KeypadButtons.R, onPress, onRelease)
-        ControlButton("B", KeypadButtons.B, onPress, onRelease)
-        ControlButton("A", KeypadButtons.A, onPress, onRelease)
-        ControlButton("START", KeypadButtons.START, onPress, onRelease, wide = true)
+        ControlButton("R", KeypadButtons.R, enabled, onPress, onRelease)
+        ControlButton("B", KeypadButtons.B, enabled, onPress, onRelease)
+        ControlButton("A", KeypadButtons.A, enabled, onPress, onRelease)
+        ControlButton("START", KeypadButtons.START, enabled, onPress, onRelease, wide = true)
     }
 }
 
@@ -103,25 +112,33 @@ private fun ActionCluster(
 private fun ControlButton(
     label: String,
     bit: Int,
+    enabled: Boolean,
     onPress: (Int) -> Unit,
     onRelease: (Int) -> Unit,
     wide: Boolean = false,
 ) {
     val size = if (wide) 72.dp else 56.dp
+    val alpha = if (enabled) 0.35f else 0.15f
     Box(
         modifier = Modifier
             .padding(4.dp)
             .size(size)
             .clip(CircleShape)
-            .background(Color(0xFF1A1D21).copy(alpha = 0.35f))
-            .pointerInput(bit) {
-                awaitEachGesture {
-                    awaitFirstDown()
-                    onPress(bit)
-                    waitForUpOrCancellation()
-                    onRelease(bit)
-                }
-            },
+            .background(Color(0xFF1A1D21).copy(alpha = alpha))
+            .then(
+                if (enabled) {
+                    Modifier.pointerInput(bit) {
+                        awaitEachGesture {
+                            awaitFirstDown()
+                            onPress(bit)
+                            waitForUpOrCancellation()
+                            onRelease(bit)
+                        }
+                    }
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Text(

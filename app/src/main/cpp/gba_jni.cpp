@@ -186,12 +186,13 @@ Java_com_gba_emulator_shell_GbaRuntimeBridge_nativeSeedDemoEnvironment(JNIEnv*, 
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_com_gba_emulator_shell_GbaRuntimeBridge_nativeStepFrame(JNIEnv* env, jclass, jlong handle,
                                                              jint max_steps) {
-  jlongArray result = env->NewLongArray(9);
+  jlongArray result = env->NewLongArray(10);
   if (result == nullptr) {
     return nullptr;
   }
-  jlong values[9] = {
+  jlong values[10] = {
       runtime_status_to_java(gba::core::AndroidRuntimeStatus::invalid_argument),
+      0,
       0,
       0,
       0,
@@ -213,8 +214,9 @@ Java_com_gba_emulator_shell_GbaRuntimeBridge_nativeStepFrame(JNIEnv* env, jclass
     values[6] = static_cast<jlong>(frame.run.stop_reason);
     values[7] = static_cast<jlong>(frame.run.unsupported_steps);
     values[8] = static_cast<jlong>(frame.run.final_pc);
+    values[9] = static_cast<jlong>(frame.scheduler_cycles_delta);
   }
-  env->SetLongArrayRegion(result, 0, 9, values);
+  env->SetLongArrayRegion(result, 0, 10, values);
   return result;
 }
 
@@ -226,6 +228,30 @@ Java_com_gba_emulator_shell_GbaRuntimeBridge_nativePixel(JNIEnv*, jclass, jlong 
   }
   return static_cast<jint>(as_runtime(handle)->pixel(static_cast<std::uint16_t>(x),
                                                    static_cast<std::uint16_t>(y)));
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_com_gba_emulator_shell_GbaRuntimeBridge_nativeGetVideoDiagnostics(JNIEnv* env, jclass,
+                                                                       jlong handle) {
+  jlongArray result = env->NewLongArray(8);
+  if (result == nullptr) {
+    return nullptr;
+  }
+  jlong values[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+  if (handle != 0) {
+    const gba::core::AndroidRuntimeVideoDiagnostics diagnostics =
+        as_runtime(handle)->video_diagnostics();
+    values[0] = static_cast<jlong>(diagnostics.dispcnt);
+    values[1] = diagnostics.forced_blank ? 1LL : 0LL;
+    values[2] = static_cast<jlong>(diagnostics.bg_enabled_mask);
+    values[3] = static_cast<jlong>(diagnostics.non_zero_pixel_count);
+    values[4] = static_cast<jlong>(diagnostics.sample_rgb565);
+    values[5] = static_cast<jlong>(diagnostics.unique_color_count);
+    values[6] = static_cast<jlong>(diagnostics.dominant_color_ratio * 1000000.0F);
+    values[7] = static_cast<jlong>(diagnostics.framebuffer_crc32);
+  }
+  env->SetLongArrayRegion(result, 0, 8, values);
+  return result;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -291,8 +317,8 @@ Java_com_gba_emulator_shell_ApuAudioEngine_nativeStop(JNIEnv*, jclass) {
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_gba_emulator_shell_ApuAudioEngine_nativeWriteBatch(JNIEnv* env, jclass,
-                                                            jshortArray pcm_interleaved) {
+Java_com_gba_emulator_shell_ApuAudioEngine_nativeEnqueueBatch(JNIEnv* env, jclass,
+                                                              jshortArray pcm_interleaved) {
   if (pcm_interleaved == nullptr) {
     return;
   }
@@ -305,9 +331,31 @@ Java_com_gba_emulator_shell_ApuAudioEngine_nativeWriteBatch(JNIEnv* env, jclass,
     return;
   }
   const std::size_t frame_count = static_cast<std::size_t>(length / 2);
-  GbaApuAudioOutput::instance().write_interleaved_pcm16(
+  GbaApuAudioOutput::instance().enqueue_interleaved_pcm16(
       reinterpret_cast<const std::int16_t*>(elements), frame_count);
   env->ReleaseShortArrayElements(pcm_interleaved, elements, JNI_ABORT);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_gba_emulator_shell_ApuAudioEngine_nativeClear(JNIEnv*, jclass) {
+  GbaApuAudioOutput::instance().clear();
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_gba_emulator_shell_ApuAudioEngine_nativeAvailableFrames(JNIEnv*, jclass) {
+  return static_cast<jint>(GbaApuAudioOutput::instance().available_frames());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_gba_emulator_shell_ApuAudioEngine_nativeSetSteadyMusicEnabled(JNIEnv*, jclass,
+                                                                         jboolean enabled) {
+  GbaApuAudioOutput::instance().set_steady_music_enabled(enabled == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_gba_emulator_shell_ApuAudioEngine_nativeSetPlaybackRateMultiplier(JNIEnv*, jclass,
+                                                                           jfloat multiplier) {
+  GbaApuAudioOutput::instance().set_playback_rate_multiplier(multiplier);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -418,6 +466,15 @@ Java_com_gba_emulator_shell_GbaRuntimeBridge_nativeLoadState(JNIEnv* env, jclass
   const gba::core::SaveStateDecodeResult result =
       gba::core::SaveStateCodec::decode_into(as_runtime(handle)->session(), bytes);
   return static_cast<jint>(result.status);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_gba_emulator_shell_GbaRuntimeBridge_nativeSessionStateHash(JNIEnv*, jclass,
+                                                                    jlong handle) {
+  if (handle == 0) {
+    return 0;
+  }
+  return static_cast<jlong>(as_runtime(handle)->session().state_hash());
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL

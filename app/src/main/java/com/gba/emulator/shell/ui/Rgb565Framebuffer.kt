@@ -7,28 +7,39 @@ import com.gba.emulator.shell.GbaRuntimeBridge
 
 object Rgb565Framebuffer {
     fun toImageBitmap(rgb565Pixels: ShortArray): ImageBitmap =
-        FramebufferPresenter().update(rgb565Pixels)
+        FramebufferPresenter().update(rgb565Pixels).image
 }
 
 /**
- * Reuses one [Bitmap] and ARGB scratch buffer for per-frame presentation.
+ * Bitmap + monotonic generation for Compose invalidation when the [ImageBitmap] reference is reused.
+ */
+data class PresentedFramebuffer(
+    val image: ImageBitmap,
+    val generation: Int,
+)
+
+/**
+ * Converts RGB565 core pixels to a fresh [ImageBitmap] each frame.
+ *
+ * Reusing one [Bitmap]/[ImageBitmap] and mutating via [Bitmap.setPixels] does not reliably
+ * invalidate Compose's GPU texture cache on Android — the viewport sizes correctly but stays black.
  */
 class FramebufferPresenter {
     private val argbScratch = IntArray(GbaRuntimeBridge.FRAMEBUFFER_PIXELS)
-    private val bitmap: Bitmap = Bitmap.createBitmap(
-        GbaRuntimeBridge.SCREEN_WIDTH,
-        GbaRuntimeBridge.SCREEN_HEIGHT,
-        Bitmap.Config.ARGB_8888,
-    )
-    private val imageBitmap: ImageBitmap = bitmap.asImageBitmap()
+    private var generation = 0
 
-    fun update(rgb565Pixels: ShortArray): ImageBitmap {
+    fun update(rgb565Pixels: ShortArray): PresentedFramebuffer {
         require(rgb565Pixels.size == GbaRuntimeBridge.FRAMEBUFFER_PIXELS) {
             "expected ${GbaRuntimeBridge.FRAMEBUFFER_PIXELS} pixels, got ${rgb565Pixels.size}"
         }
         for (i in rgb565Pixels.indices) {
             argbScratch[i] = rgb565ToArgb(rgb565Pixels[i].toInt() and 0xFFFF)
         }
+        val bitmap = Bitmap.createBitmap(
+            GbaRuntimeBridge.SCREEN_WIDTH,
+            GbaRuntimeBridge.SCREEN_HEIGHT,
+            Bitmap.Config.ARGB_8888,
+        )
         bitmap.setPixels(
             argbScratch,
             0,
@@ -38,7 +49,9 @@ class FramebufferPresenter {
             GbaRuntimeBridge.SCREEN_WIDTH,
             GbaRuntimeBridge.SCREEN_HEIGHT,
         )
-        return imageBitmap
+        bitmap.prepareToDraw()
+        generation += 1
+        return PresentedFramebuffer(image = bitmap.asImageBitmap(), generation = generation)
     }
 
     private fun rgb565ToArgb(rgb565: Int): Int {

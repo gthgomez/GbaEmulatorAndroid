@@ -41,6 +41,7 @@ import com.gba.emulator.shell.PushedRomLoader
 import com.gba.emulator.shell.R
 import com.gba.emulator.shell.RomLoader
 import com.gba.emulator.shell.RomValidator
+import com.gba.emulator.shell.RomVideoSelfTest
 import com.gba.emulator.shell.RuntimeSelfTest
 import com.gba.emulator.shell.SaveRepository
 import kotlinx.coroutines.Dispatchers
@@ -449,7 +450,7 @@ fun GbaEmulatorScreen(
                                     contentDescription = stringResource(
                                         R.string.framebuffer_content_description,
                                     ),
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Fit,
                                     filterQuality = FilterQuality.None,
                                 )
@@ -496,6 +497,31 @@ fun GbaEmulatorScreen(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(stringResource(R.string.run_persistence_self_test))
+                        }
+
+                        OutlinedButton(
+                            enabled = !running,
+                            onClick = {
+                                running = true
+                                framebufferBitmap = null
+                                statusText = context.getString(R.string.status_rom_video_running)
+                                scope.launch {
+                                    val result = withContext(Dispatchers.Default) {
+                                        RomVideoSelfTest.run(context)
+                                    }
+                                    statusText = when {
+                                        result.skipped -> {
+                                            context.getString(R.string.status_rom_video_skipped, result.summary)
+                                        }
+                                        result.passed -> passFormat.format(result.summary)
+                                        else -> failFormat.format(result.summary)
+                                    }
+                                    running = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.run_rom_video_self_test))
                         }
 
                         OutlinedButton(

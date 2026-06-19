@@ -31,12 +31,29 @@ object RuntimeSelfTest {
             return@withHandle Result(false, "seed demo environment failed")
         }
 
-        val frame = GbaRuntimeBridge.stepFrame(handle, maxSteps = 3)
-        if (frame.status != GbaRuntimeBridge.RuntimeStatus.Ok) {
-            return@withHandle Result(false, "step_frame failed: ${frame.status}")
+        val bounded = GbaRuntimeBridge.stepFrame(handle, maxSteps = 3)
+        if (bounded.status != GbaRuntimeBridge.RuntimeStatus.Ok) {
+            return@withHandle Result(false, "bounded step_frame failed: ${bounded.status}")
         }
-        if (frame.executedSteps != 3) {
-            return@withHandle Result(false, "expected 3 steps, got ${frame.executedSteps}")
+        if (bounded.executedSteps != 3) {
+            return@withHandle Result(
+                false,
+                "bounded frame expected 3 steps, got ${bounded.executedSteps}",
+            )
+        }
+        if (bounded.renderedScanlines != 0) {
+            return@withHandle Result(
+                false,
+                "bounded frame expected 0 scanlines, got ${bounded.renderedScanlines}",
+            )
+        }
+
+        val frame = GbaRuntimeBridge.stepFrame(
+            handle,
+            maxSteps = EmulatorSession.DEFAULT_MAX_INSTRUCTIONS_PER_FRAME,
+        )
+        if (frame.status != GbaRuntimeBridge.RuntimeStatus.Ok) {
+            return@withHandle Result(false, "full-frame step_frame failed: ${frame.status}")
         }
         if (frame.renderedScanlines != GbaRuntimeBridge.SCREEN_HEIGHT) {
             return@withHandle Result(
@@ -51,11 +68,11 @@ object RuntimeSelfTest {
                 "expected pixel(0,0)=0x1234, got 0x${cornerPixel.toString(16)}",
             )
         }
-        if (frame.audioSamples != 3) {
-            return@withHandle Result(false, "expected 3 audio samples, got ${frame.audioSamples}")
+        if (frame.audioSamples < 3) {
+            return@withHandle Result(false, "expected >=3 audio samples, got ${frame.audioSamples}")
         }
         if (frame.audioUnderruns != 0) {
-            return@withHandle Result(false, "expected no audio underrun on first frame")
+            return@withHandle Result(false, "expected no audio underrun on first full frame")
         }
 
         val underrun = GbaRuntimeBridge.stepFrame(handle, maxSteps = 1)
@@ -66,7 +83,7 @@ object RuntimeSelfTest {
         val framebuffer = GbaRuntimeBridge.copyFramebuffer(handle)
         Result(
             passed = true,
-            summary = "runtime ok: scanlines=${frame.renderedScanlines}, audio=${frame.audioSamples}",
+            summary = "runtime ok: bounded 0 scanlines, full ${frame.renderedScanlines} scanlines",
             framebufferRgb565 = framebuffer,
         )
     }

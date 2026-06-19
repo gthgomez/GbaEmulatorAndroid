@@ -76,6 +76,24 @@ object GbaRuntimeBridge {
         val stopReason: StopReason,
         val unsupportedSteps: Int,
         val finalPc: Int,
+        val schedulerCyclesDelta: Long,
+    ) {
+        val frameComplete: Boolean
+            get() = status == RuntimeStatus.Ok &&
+                stopReason != StopReason.FetchFailed &&
+                stopReason != StopReason.UnsupportedInstruction &&
+                schedulerCyclesDelta >= EmulationFramePacer.CYCLES_PER_FRAME
+    }
+
+    data class VideoDiagnostics(
+        val dispcnt: Int,
+        val forcedBlank: Boolean,
+        val bgEnabledMask: Int,
+        val nonZeroPixelCount: Int,
+        val sampleRgb565: Int,
+        val uniqueColorCount: Int,
+        val dominantColorRatio: Float,
+        val framebufferCrc32: Int,
     )
 
     external fun nativeCreate(): Long
@@ -87,12 +105,14 @@ object GbaRuntimeBridge {
     external fun nativeStepFrame(handle: Long, maxSteps: Int): LongArray
     external fun nativePixel(handle: Long, x: Int, y: Int): Int
     external fun nativeCopyFramebuffer(handle: Long, outPixels: ShortArray)
+    external fun nativeGetVideoDiagnostics(handle: Long): LongArray
     external fun nativeDrainAudioBatch(handle: Long): ShortArray
     external fun nativeExportSave(handle: Long): ByteArray?
     external fun nativeImportSave(handle: Long, saveBytes: ByteArray): Int
     external fun nativeSaveState(handle: Long): ByteArray?
     external fun nativeLoadState(handle: Long, stateBytes: ByteArray): Int
     external fun nativeGetCartridgeMetadata(handle: Long): Array<String>?
+    external fun nativeSessionStateHash(handle: Long): Long
 
     inline fun <T> withHandle(block: (Long) -> T): T {
         val handle = nativeCreate()
@@ -117,7 +137,7 @@ object GbaRuntimeBridge {
 
     fun stepFrame(handle: Long, maxSteps: Int): FrameResult {
         val values = nativeStepFrame(handle, maxSteps)
-        require(values.size == 9) { "nativeStepFrame returned ${values.size} values" }
+        require(values.size == 10) { "nativeStepFrame returned ${values.size} values" }
         return FrameResult(
             status = RuntimeStatus.fromCode(values[0].toInt()),
             executedSteps = values[1].toInt(),
@@ -128,6 +148,7 @@ object GbaRuntimeBridge {
             stopReason = StopReason.fromCode(values[6].toInt()),
             unsupportedSteps = values[7].toInt(),
             finalPc = values[8].toInt(),
+            schedulerCyclesDelta = values[9],
         )
     }
 
@@ -135,6 +156,21 @@ object GbaRuntimeBridge {
         val pixels = ShortArray(FRAMEBUFFER_PIXELS)
         nativeCopyFramebuffer(handle, pixels)
         return pixels
+    }
+
+    fun getVideoDiagnostics(handle: Long): VideoDiagnostics? {
+        val values = nativeGetVideoDiagnostics(handle)
+        require(values.size == 8) { "nativeGetVideoDiagnostics returned ${values.size} values" }
+        return VideoDiagnostics(
+            dispcnt = values[0].toInt() and 0xFFFF,
+            forcedBlank = values[1] != 0L,
+            bgEnabledMask = values[2].toInt() and 0xFF,
+            nonZeroPixelCount = values[3].toInt(),
+            sampleRgb565 = values[4].toInt() and 0xFFFF,
+            uniqueColorCount = values[5].toInt(),
+            dominantColorRatio = values[6].toInt() / 1_000_000f,
+            framebufferCrc32 = values[7].toInt(),
+        )
     }
 
     fun pixel(handle: Long, x: Int, y: Int): Int = nativePixel(handle, x, y)
@@ -155,4 +191,6 @@ object GbaRuntimeBridge {
         val values = nativeGetCartridgeMetadata(handle) ?: return null
         return CartridgeMetadata.fromNative(values)
     }
+
+    fun sessionStateHash(handle: Long): Long = nativeSessionStateHash(handle)
 }
