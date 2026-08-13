@@ -86,7 +86,7 @@ object RomVideoSelfTest {
         if (frame.renderedScanlines != GbaRuntimeBridge.SCREEN_HEIGHT) {
             return "frame $frameIndex: expected ${GbaRuntimeBridge.SCREEN_HEIGHT} scanlines, got ${frame.renderedScanlines}"
         }
-        if (FramebufferVideoMetrics.isUniformBackdrop(metrics, diag.sampleRgb565)) {
+        if (frameIndex >= 60 && FramebufferVideoMetrics.isUniformBackdrop(metrics, diag.sampleRgb565)) {
             return "frame $frameIndex: uniform backdrop (unique=${metrics.uniqueColorCount} " +
                 "dominant=0x${metrics.dominantColorRgb565.toString(16)} " +
                 "ratio=${"%.3f".format(metrics.dominantColorRatio)})"

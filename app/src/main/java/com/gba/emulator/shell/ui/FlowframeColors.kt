@@ -23,6 +23,21 @@ object FlowframeColors {
     val Outline = Color(0xFFC5D8E8)
     val Error = Color(0xFFB3261E)
     val OnError = Color(0xFFFFFFFF)
+
+    // Dark mode tokens
+    val DarkBackground = Color(0xFF0E1117)
+    val DarkSurface = Color(0xFF1A1F2B)
+    val DarkSurfaceVariant = Color(0xFF242A38)
+    val DarkInk = Color(0xFFE2E8F0)
+    val DarkMuted = Color(0xFF8B95A5)
+    val DarkOutline = Color(0xFF2E3545)
+
+    // Gameplay chrome tokens (centralized)
+    val ChromeBar = Color(0xFF1A2330)
+    val ChromeText = Color(0xFFB8C4D0)
+    val ChromeTextDim = Color(0xFF8FA3B8)
+    val AccentSpeed = Color(0xFF7EC8FF)
+    val ViewportOverlay = Color(0xFFE8EEF3)
 }
 
 object FlowframeColorSchemes {
@@ -38,6 +53,22 @@ object FlowframeColorSchemes {
         surfaceVariant = FlowframeColors.ShellSurfaceVariant,
         onSurfaceVariant = FlowframeColors.Muted,
         outline = FlowframeColors.Outline,
+        error = FlowframeColors.Error,
+        onError = FlowframeColors.OnError,
+    )
+
+    val dark = darkColorScheme(
+        primary = FlowframeColors.SkyNeon,
+        onPrimary = FlowframeColors.OnSkyNeon,
+        primaryContainer = Color(0xFF103647),
+        onPrimaryContainer = Color(0xFFB8EBFF),
+        background = FlowframeColors.DarkBackground,
+        onBackground = FlowframeColors.DarkInk,
+        surface = FlowframeColors.DarkSurface,
+        onSurface = FlowframeColors.DarkInk,
+        surfaceVariant = FlowframeColors.DarkSurfaceVariant,
+        onSurfaceVariant = FlowframeColors.DarkMuted,
+        outline = FlowframeColors.DarkOutline,
         error = FlowframeColors.Error,
         onError = FlowframeColors.OnError,
     )

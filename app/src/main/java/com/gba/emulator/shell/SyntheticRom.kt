@@ -7,10 +7,12 @@ object SyntheticRom {
     private val addR0R0Imm1: Int = 0xE2800001u.toInt()
 
     fun build12ByteTestRom(): ByteArray {
-        val rom = ByteArray(12)
-        writeWord(rom, 0, addR0R0Imm1)
-        writeWord(rom, 4, addR0R0Imm1)
-        writeWord(rom, 8, addR0R0Imm1)
+        // Mirrors C++ android_runtime_test.cpp: 4096-byte looping ROM
+        val rom = ByteArray(4096)
+        for (offset in 0 until 4092 step 4) {
+            writeWord(rom, offset, addR0R0Imm1)
+        }
+        writeWord(rom, 4092, 0xEAFFFFFBu.toInt()) // branches back to 0x08000000
         return rom
     }
 

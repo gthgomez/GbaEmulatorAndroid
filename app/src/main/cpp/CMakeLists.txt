@@ -4,6 +4,10 @@ project(gbaemulator)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# 16 KB page-size alignment for Play (Android 15+). Hoist to shared linker flags so
+# libc++_shared and other shared deps inherit the same LOAD segment alignment.
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")
+
 # Project_Android/GbaEmulatorAndroid/app/src/main/cpp -> ../../../../../GBA_Emulator
 set(GBA_EMULATOR_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../../GBA_Emulator")
 set(GBA_CORE_DIR "${GBA_EMULATOR_ROOT}/src/core")
@@ -51,7 +55,7 @@ target_include_directories(gbaemulator PRIVATE
 target_compile_options(gbaemulator PRIVATE
     -Wall
     -Wextra
-    $<$<CONFIG:Release>:-O2>
+    -O3
 )
 
 target_link_libraries(gbaemulator PRIVATE log oboe::oboe)

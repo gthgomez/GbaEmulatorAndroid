@@ -17,10 +17,19 @@ object PersistenceSelfTest {
             return@withHandle Result(false, "SRAM save backing missing after loadRom")
         }
 
+        val hash0 = GbaRuntimeBridge.sessionStateHash(handle)
+        val hashBefore = hash0
+        val encoded = GbaRuntimeBridge.encodeSaveState(handle)
+            ?: return@withHandle Result(false, "encodeSaveState returned null")
+        if (encoded.size < 16) {
+            return@withHandle Result(false, "encoded state too small (${encoded.size})")
+        }
+
         val frame = GbaRuntimeBridge.stepFrame(handle, maxSteps = 4)
         if (frame.status != GbaRuntimeBridge.RuntimeStatus.Ok) {
             return@withHandle Result(false, "stepFrame failed: ${frame.status}")
         }
+        val hashAfter4Steps = frame.stateHash
 
         val exported = GbaRuntimeBridge.exportCartridgeSave(handle) ?: return@withHandle Result(
             false,
@@ -31,17 +40,12 @@ object PersistenceSelfTest {
         ) {
             return@withHandle Result(false, "import identical save rejected")
         }
+        val hashAfterImport = GbaRuntimeBridge.sessionStateHash(handle)
+
         val reExported = GbaRuntimeBridge.exportCartridgeSave(handle)
             ?: return@withHandle Result(false, "re-export returned null")
         if (!exported.contentEquals(reExported)) {
             return@withHandle Result(false, "save bytes changed after import")
-        }
-
-        val hashBefore = frame.stateHash
-        val encoded = GbaRuntimeBridge.encodeSaveState(handle)
-            ?: return@withHandle Result(false, "encodeSaveState returned null")
-        if (encoded.size < 16) {
-            return@withHandle Result(false, "encoded state too small (${encoded.size})")
         }
 
         GbaRuntimeBridge.setButtonMask(handle, 0x000F)
@@ -50,7 +54,10 @@ object PersistenceSelfTest {
             return@withHandle Result(false, "stepFrame before restore failed: ${stepped.status}")
         }
         if (stepped.stateHash == hashBefore) {
-            return@withHandle Result(false, "state hash did not change after input")
+            return@withHandle Result(
+                false,
+                "state hash did not change after input: stepped=${stepped.stateHash}, before=$hashBefore",
+            )
         }
 
         when (GbaRuntimeBridge.loadSaveState(handle, encoded)) {
@@ -61,7 +68,7 @@ object PersistenceSelfTest {
         if (hashAfterRestore != hashBefore) {
             return@withHandle Result(
                 false,
-                "state hash after restore $hashAfterRestore != before $hashBefore",
+                "FAIL: hashAfterRestore=$hashAfterRestore, hashBefore=$hashBefore (hash0=$hash0, hashAfter4Steps=$hashAfter4Steps, hashAfterImport=$hashAfterImport, stepped=${stepped.stateHash})",
             )
         }
 

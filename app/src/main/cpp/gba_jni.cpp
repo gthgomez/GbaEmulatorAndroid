@@ -267,43 +267,39 @@ Java_com_gba_emulator_shell_GbaRuntimeBridge_nativeCopyFramebuffer(JNIEnv* env, 
   if (env->GetArrayLength(out_pixels) != expected) {
     return;
   }
-  jshort* elements = env->GetShortArrayElements(out_pixels, nullptr);
-  if (elements == nullptr) {
-    return;
-  }
-  for (jsize i = 0; i < expected; ++i) {
-    elements[i] = static_cast<jshort>(framebuffer[static_cast<std::size_t>(i)]);
-  }
-  env->ReleaseShortArrayElements(out_pixels, elements, 0);
+  env->SetShortArrayRegion(out_pixels, 0, expected,
+                           reinterpret_cast<const jshort*>(framebuffer.data()));
 }
 
 // --- Audio (Agent 3): drain last APU batch + Oboe playback ---
 
-extern "C" JNIEXPORT jshortArray JNICALL
+extern "C" JNIEXPORT jint JNICALL
 Java_com_gba_emulator_shell_GbaRuntimeBridge_nativeDrainAudioBatch(JNIEnv* env, jclass,
-                                                                   jlong handle) {
-  if (handle == 0) {
-    return env->NewShortArray(0);
+                                                                   jlong handle,
+                                                                   jshortArray out_audio) {
+  if (handle == 0 || out_audio == nullptr) {
+    return 0;
   }
   const std::vector<gba::core::ApuMixedSample>& batch =
       as_runtime(handle)->last_audio_batch();
   const jsize frame_count = static_cast<jsize>(batch.size());
   const jsize array_length = frame_count * 2;
-  jshortArray result = env->NewShortArray(array_length);
-  if (result == nullptr) {
-    return nullptr;
+  const jsize target_length = env->GetArrayLength(out_audio);
+  const jsize copy_length = std::min<jsize>(array_length, target_length);
+  if (copy_length <= 0) {
+    return 0;
   }
-  if (array_length == 0) {
-    return result;
+  jshort* elements = env->GetShortArrayElements(out_audio, nullptr);
+  if (elements == nullptr) {
+    return 0;
   }
-  std::vector<jshort> interleaved(static_cast<std::size_t>(array_length));
-  for (jsize i = 0; i < frame_count; ++i) {
+  for (jsize i = 0; i < copy_length / 2; ++i) {
     const gba::core::ApuMixedSample& sample = batch[static_cast<std::size_t>(i)];
-    interleaved[static_cast<std::size_t>(i * 2)] = sample.left;
-    interleaved[static_cast<std::size_t>(i * 2 + 1)] = sample.right;
+    elements[i * 2] = static_cast<jshort>(sample.left);
+    elements[i * 2 + 1] = static_cast<jshort>(sample.right);
   }
-  env->SetShortArrayRegion(result, 0, array_length, interleaved.data());
-  return result;
+  env->ReleaseShortArrayElements(out_audio, elements, 0);
+  return copy_length;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -318,11 +314,12 @@ Java_com_gba_emulator_shell_ApuAudioEngine_nativeStop(JNIEnv*, jclass) {
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_gba_emulator_shell_ApuAudioEngine_nativeEnqueueBatch(JNIEnv* env, jclass,
-                                                              jshortArray pcm_interleaved) {
-  if (pcm_interleaved == nullptr) {
+                                                              jshortArray pcm_interleaved,
+                                                              jint size) {
+  if (pcm_interleaved == nullptr || size <= 0) {
     return;
   }
-  const jsize length = env->GetArrayLength(pcm_interleaved);
+  const jsize length = std::min<jsize>(env->GetArrayLength(pcm_interleaved), size);
   if (length <= 0 || (length % 2) != 0) {
     return;
   }

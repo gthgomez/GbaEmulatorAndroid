@@ -37,7 +37,6 @@ fun GameViewportFrame(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
             .then(backgroundModifier)
             .padding(16.dp),
         contentAlignment = Alignment.Center,

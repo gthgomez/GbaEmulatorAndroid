@@ -41,7 +41,7 @@ class EmulationFramePacer(
     }
 
     companion object {
-        const val GBA_FRAME_NS = 1_000_000_000L / 59_727L
+        const val GBA_FRAME_NS = 16_742_756L // ~16.74 ms (1_000_000_000 ns / 59.727 fps)
         const val TARGET_FPS = 59.727
         const val CYCLES_PER_FRAME = 280_896L
         private const val MAX_CATCHUP_SLOTS = 4L

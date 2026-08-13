@@ -6,7 +6,7 @@ plugins {
 android {
     namespace = "com.gba.emulator.shell"
     compileSdk = 36
-    ndkVersion = "27.1.12297006"
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.gba.emulator.shell"
@@ -19,7 +19,10 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags += listOf("-std=c++17")
-                arguments += listOf("-DANDROID_STL=c++_shared")
+                arguments += listOf(
+                    "-DANDROID_STL=c++_shared",
+                    "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+                )
             }
         }
 
@@ -83,6 +86,8 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.material.icons.core)
+    implementation(libs.androidx.material.icons.extended)
     implementation(libs.oboe)
 
     testImplementation(libs.junit)

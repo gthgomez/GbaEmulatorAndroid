@@ -37,7 +37,7 @@ fun SpeedSelectorRow(
         Text(
             text = stringResource(R.string.game_speed_label),
             style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFFB8C4D0),
+            color = FlowframeColors.ChromeText,
         )
         PlaybackSpeedController.PlaybackSpeed.entries.forEach { speed ->
             val chipA11y = stringResource(playbackSpeedContentDescription(speed))

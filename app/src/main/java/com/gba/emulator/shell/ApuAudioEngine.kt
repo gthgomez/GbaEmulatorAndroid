@@ -27,14 +27,15 @@ class ApuAudioEngine {
         running = false
     }
 
-    fun enqueueBatch(stereoPcm16Interleaved: ShortArray) {
-        if (!running || stereoPcm16Interleaved.isEmpty()) {
+    fun enqueueBatch(stereoPcm16Interleaved: ShortArray, size: Int = stereoPcm16Interleaved.size) {
+        if (!running || stereoPcm16Interleaved.isEmpty() || size <= 0) {
             return
         }
-        require(stereoPcm16Interleaved.size % 2 == 0) {
+        val expectedSize = if (size < stereoPcm16Interleaved.size) size else stereoPcm16Interleaved.size
+        require(expectedSize % 2 == 0) {
             "stereo PCM16 batch must have an even number of shorts"
         }
-        nativeEnqueueBatch(stereoPcm16Interleaved)
+        nativeEnqueueBatch(stereoPcm16Interleaved, expectedSize)
     }
 
     /** @deprecated Use [enqueueBatch]. */
@@ -51,7 +52,7 @@ class ApuAudioEngine {
             return
         }
         val silence = ShortArray(SAMPLES_PER_GBA_FRAME * PRE_ROLL_GBA_FRAMES * CHANNEL_COUNT)
-        nativeEnqueueBatch(silence)
+        nativeEnqueueBatch(silence, silence.size)
     }
 
     val availableFrames: Int
@@ -74,7 +75,7 @@ class ApuAudioEngine {
 
     private external fun nativeStart(): Boolean
     private external fun nativeStop()
-    private external fun nativeEnqueueBatch(stereoPcm16Interleaved: ShortArray)
+    private external fun nativeEnqueueBatch(stereoPcm16Interleaved: ShortArray, size: Int)
     private external fun nativeClear()
     private external fun nativeAvailableFrames(): Int
     private external fun nativeSetSteadyMusicEnabled(enabled: Boolean)

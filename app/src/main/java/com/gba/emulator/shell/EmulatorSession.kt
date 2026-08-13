@@ -185,9 +185,12 @@ class EmulatorSession {
         val frame: GbaRuntimeBridge.FrameResult,
         val pixels: ShortArray,
         val audioBatch: ShortArray,
+        val audioBatchSize: Int,
     )
 
     fun stepFrameAndPresent(
+        pixelsDest: ShortArray,
+        audioDest: ShortArray,
         maxInstructionSteps: Int = DEFAULT_MAX_INSTRUCTIONS_PER_FRAME,
     ): PresentedFrameStep? {
         synchronized(lock) {
@@ -195,9 +198,9 @@ class EmulatorSession {
                 return null
             }
             val frame = GbaRuntimeBridge.stepFrame(handle, maxInstructionSteps)
-            val pixels = GbaRuntimeBridge.copyFramebuffer(handle)
-            val audioBatch = GbaRuntimeBridge.drainAudioBatch(handle)
-            return PresentedFrameStep(frame, pixels, audioBatch)
+            GbaRuntimeBridge.copyFramebuffer(handle, pixelsDest)
+            val audioLength = GbaRuntimeBridge.drainAudioBatch(handle, audioDest)
+            return PresentedFrameStep(frame, pixelsDest, audioDest, audioLength)
         }
     }
 

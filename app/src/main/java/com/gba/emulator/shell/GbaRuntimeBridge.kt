@@ -106,7 +106,7 @@ object GbaRuntimeBridge {
     external fun nativePixel(handle: Long, x: Int, y: Int): Int
     external fun nativeCopyFramebuffer(handle: Long, outPixels: ShortArray)
     external fun nativeGetVideoDiagnostics(handle: Long): LongArray
-    external fun nativeDrainAudioBatch(handle: Long): ShortArray
+    external fun nativeDrainAudioBatch(handle: Long, outAudio: ShortArray): Int
     external fun nativeExportSave(handle: Long): ByteArray?
     external fun nativeImportSave(handle: Long, saveBytes: ByteArray): Int
     external fun nativeSaveState(handle: Long): ByteArray?
@@ -158,6 +158,10 @@ object GbaRuntimeBridge {
         return pixels
     }
 
+    fun copyFramebuffer(handle: Long, outPixels: ShortArray) {
+        nativeCopyFramebuffer(handle, outPixels)
+    }
+
     fun getVideoDiagnostics(handle: Long): VideoDiagnostics? {
         val values = nativeGetVideoDiagnostics(handle)
         require(values.size == 8) { "nativeGetVideoDiagnostics returned ${values.size} values" }
@@ -175,7 +179,14 @@ object GbaRuntimeBridge {
 
     fun pixel(handle: Long, x: Int, y: Int): Int = nativePixel(handle, x, y)
 
-    fun drainAudioBatch(handle: Long): ShortArray = nativeDrainAudioBatch(handle)
+    fun drainAudioBatch(handle: Long): ShortArray {
+        val audio = ShortArray(1098)
+        val len = nativeDrainAudioBatch(handle, audio)
+        return if (len == 1098) audio else audio.copyOf(len)
+    }
+
+    fun drainAudioBatch(handle: Long, outAudio: ShortArray): Int =
+        nativeDrainAudioBatch(handle, outAudio)
 
     fun exportCartridgeSave(handle: Long): ByteArray? = nativeExportSave(handle)
 

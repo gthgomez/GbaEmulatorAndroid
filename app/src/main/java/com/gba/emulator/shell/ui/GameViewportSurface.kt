@@ -16,11 +16,10 @@ import com.gba.emulator.shell.GbaRuntimeBridge
  * caching issues with per-frame RGB565 uploads.
  */
 class GameViewportSurfaceController {
-    private val argbScratch = IntArray(GbaRuntimeBridge.FRAMEBUFFER_PIXELS)
     private val bitmap = Bitmap.createBitmap(
         GbaRuntimeBridge.SCREEN_WIDTH,
         GbaRuntimeBridge.SCREEN_HEIGHT,
-        Bitmap.Config.ARGB_8888,
+        Bitmap.Config.RGB_565,
     )
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val srcRect = Rect(0, 0, GbaRuntimeBridge.SCREEN_WIDTH, GbaRuntimeBridge.SCREEN_HEIGHT)
@@ -53,18 +52,7 @@ class GameViewportSurfaceController {
         require(rgb565Pixels.size == GbaRuntimeBridge.FRAMEBUFFER_PIXELS) {
             "expected ${GbaRuntimeBridge.FRAMEBUFFER_PIXELS} pixels, got ${rgb565Pixels.size}"
         }
-        for (i in rgb565Pixels.indices) {
-            argbScratch[i] = rgb565ToArgb(rgb565Pixels[i].toInt() and 0xFFFF)
-        }
-        bitmap.setPixels(
-            argbScratch,
-            0,
-            GbaRuntimeBridge.SCREEN_WIDTH,
-            0,
-            0,
-            GbaRuntimeBridge.SCREEN_WIDTH,
-            GbaRuntimeBridge.SCREEN_HEIGHT,
-        )
+        bitmap.copyPixelsFromBuffer(java.nio.ShortBuffer.wrap(rgb565Pixels))
         return bitmap
     }
 
@@ -90,13 +78,6 @@ class GameViewportSurfaceController {
         } finally {
             holder.unlockCanvasAndPost(canvas)
         }
-    }
-
-    private fun rgb565ToArgb(rgb565: Int): Int {
-        val r = ((rgb565 shr 11) and 0x1F) shl 3
-        val g = ((rgb565 shr 5) and 0x3F) shl 2
-        val b = (rgb565 and 0x1F) shl 3
-        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 }
 

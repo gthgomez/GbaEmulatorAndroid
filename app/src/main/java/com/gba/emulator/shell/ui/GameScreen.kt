@@ -4,21 +4,29 @@ import android.content.Context
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +58,7 @@ import com.gba.emulator.shell.EmulationFramePacer
 import com.gba.emulator.shell.EmulatorSession
 import com.gba.emulator.shell.GbaRuntimeBridge
 import com.gba.emulator.shell.PlaybackSpeedController
+import com.gba.emulator.shell.PlaytestDataLogger
 import com.gba.emulator.shell.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -96,6 +105,7 @@ fun GameScreen(
     val currentAudioMode by rememberUpdatedState(audioMode)
     val viewportController = remember { GameViewportSurfaceController() }
     val audioEngine = remember { ApuAudioEngine() }
+    val logger = remember { PlaytestDataLogger(context) }
     val scope = rememberCoroutineScope()
 
     val runtimeErrorTemplate = stringResource(R.string.game_runtime_error)
@@ -138,7 +148,9 @@ fun GameScreen(
     }
 
     DisposableEffect(window) {
+        window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
+            window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             if (window != null) {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = true
@@ -204,7 +216,10 @@ fun GameScreen(
     LaunchedEffect(session, running, pausedByLifecycle, ignoreAbnormalStop, restartGeneration) {
         framePacer.reset()
         auditLogged = false
+        val recycledPixels = ShortArray(GbaRuntimeBridge.FRAMEBUFFER_PIXELS)
+        val recycledAudio = ShortArray(1098)
         try {
+            logger.startSession(romTitle)
             while (isActive && running && !pausedByLifecycle && session.isActive) {
                 val frameStart = withFrameNanos { nanos -> nanos }
                 val wake = framePacer.onWake(frameStart)
@@ -221,11 +236,14 @@ fun GameScreen(
                 var lastBatchFrames = 0
                 withContext(Dispatchers.Default) {
                     repeat(stepsToRun) {
-                        val step = session.stepFrameAndPresent() ?: return@withContext
+                        val step = session.stepFrameAndPresent(
+                            pixelsDest = recycledPixels,
+                            audioDest = recycledAudio
+                        ) ?: return@withContext
                         lastStep = step
-                        lastBatchFrames = step.audioBatch.size / 2
-                        if (currentAudioMode != AudioPlaybackMode.Mute && step.audioBatch.isNotEmpty()) {
-                            audioEngine.enqueueBatch(step.audioBatch)
+                        lastBatchFrames = step.audioBatchSize / 2
+                        if (currentAudioMode != AudioPlaybackMode.Mute && step.audioBatchSize > 0) {
+                            audioEngine.enqueueBatch(step.audioBatch, step.audioBatchSize)
                         }
                     }
                 }
@@ -295,6 +313,23 @@ fun GameScreen(
                         }
                         lastFrameNanos = frameStart
                         val playbackUnderruns = audioEngine.playbackUnderruns
+
+                        logger.logFrame(
+                            PlaytestDataLogger.FrameMetrics(
+                                frameIndex = frameCount,
+                                frameMs = frameMs,
+                                cyclesDelta = frame.schedulerCyclesDelta,
+                                executedSteps = frame.executedSteps,
+                                renderedScanlines = frame.renderedScanlines,
+                                audioSamples = frame.audioSamples,
+                                playbackUnderruns = playbackUnderruns,
+                                coreUnderruns = frame.audioUnderruns,
+                                stateHash = frame.stateHash,
+                                stopReason = frame.stopReason.name,
+                                finalPc = "0x${frame.finalPc.toUInt().toString(16)}"
+                            )
+                        )
+
                         if (BuildConfig.DEBUG) {
                             val behindLabel = if (wake.behindSchedule) " behind" else ""
                             val videoSuffix = videoDiagnostics?.let { diag ->
@@ -347,6 +382,7 @@ fun GameScreen(
             }
         } finally {
             session.setButtonMask(0)
+            logger.stopSession()
         }
     }
 
@@ -361,13 +397,13 @@ fun GameScreen(
                     Text(
                         text = romTitle,
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color(0xFFE8EEF3),
+                        color = FlowframeColors.ViewportOverlay,
                     )
                     if (playbackSpeed != PlaybackSpeedController.PlaybackSpeed.One) {
                         Text(
                             text = playbackSpeed.label,
                             style = MaterialTheme.typography.labelMedium,
-                            color = Color(0xFF7EC8FF),
+                            color = FlowframeColors.AccentSpeed,
                             modifier = Modifier.padding(start = 8.dp),
                         )
                     }
@@ -376,14 +412,14 @@ fun GameScreen(
             navigationIcon = {
                 IconButton(onClick = onExit) {
                     Icon(
-                        painter = painterResource(android.R.drawable.ic_menu_close_clear_cancel),
+                        imageVector = Icons.Default.Close,
                         contentDescription = stringResource(R.string.exit_game),
-                        tint = Color(0xFFE8EEF3),
+                        tint = FlowframeColors.ViewportOverlay,
                     )
                 }
             },
             actions = {
-                OutlinedButton(
+                IconButton(
                     onClick = {
                         scope.launch {
                             withContext(Dispatchers.Default) {
@@ -407,27 +443,31 @@ fun GameScreen(
                     },
                     modifier = Modifier.padding(end = 8.dp),
                 ) {
-                    Text(stringResource(R.string.restart_game))
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.restart_game),
+                        tint = FlowframeColors.ViewportOverlay,
+                    )
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = FlowframeColors.PlayStageBlack,
-                titleContentColor = Color(0xFFE8EEF3),
-                navigationIconContentColor = Color(0xFFE8EEF3),
+                titleContentColor = FlowframeColors.ViewportOverlay,
+                navigationIconContentColor = FlowframeColors.ViewportOverlay,
             ),
         )
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF1A2330))
+                .background(FlowframeColors.ChromeBar)
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = stringResource(R.string.game_steady_music),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFB8C4D0),
+                color = FlowframeColors.ChromeText,
                 modifier = Modifier.weight(1f),
             )
             Switch(
@@ -455,7 +495,7 @@ fun GameScreen(
             Text(
                 text = steadyMusicHelper,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF8FA3B8),
+                color = FlowframeColors.ChromeTextDim,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 2.dp),
@@ -484,34 +524,55 @@ fun GameScreen(
                             warmingUpText
                         },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF8FA3B8),
+                        color = FlowframeColors.ChromeTextDim,
                         modifier = Modifier.align(Alignment.Center),
                     )
+                }
+
+                // Frosted pause overlay
+                if (pausedByLifecycle) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.7f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Pause,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.paused_overlay),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        if (pausedByLifecycle) {
-            Text(
-                text = stringResource(R.string.paused_overlay),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFB8C4D0),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF1A2330))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-
         if (BuildConfig.DEBUG && showDebugOverlay && debugOverlay.isNotEmpty()) {
-            Text(
-                text = debugOverlay,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF8FA3B8),
+            Surface(
+                color = Color.Black.copy(alpha = 0.65f),
+                shape = RoundedCornerShape(6.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-            )
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = debugOverlay,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = FlowframeColors.ChromeTextDim,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
         }
 
         if (overlayText.isNotEmpty()) {
@@ -524,7 +585,7 @@ fun GameScreen(
                 Text(
                     text = overlayText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFB8C4D0),
+                    color = FlowframeColors.ChromeText,
                 )
                 if (BuildConfig.DEBUG && !running) {
                     Row(modifier = Modifier.padding(top = 8.dp)) {

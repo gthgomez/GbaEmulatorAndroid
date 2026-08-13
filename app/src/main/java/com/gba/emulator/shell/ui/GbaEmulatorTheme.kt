@@ -6,8 +6,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 
 /** Play viewport surround; default is matte black per product decision. */
 enum class PlaySurround {
@@ -16,6 +19,7 @@ enum class PlaySurround {
 }
 
 val LocalPlaySurround = staticCompositionLocalOf { PlaySurround.Black }
+val LocalDarkModeOverride = staticCompositionLocalOf<Boolean?> { null }
 
 private val FlowframeShapes = Shapes(
     extraSmall = RoundedCornerShape(6.dp),
@@ -25,21 +29,43 @@ private val FlowframeShapes = Shapes(
 )
 
 /**
- * Flowframe shell theme — light cool shell by default (not dynamic Material You).
- * Set [highContrast] for accessibility toggle; play stage uses [LocalPlaySurround].
+ * Flowframe shell theme — supports light and dark modes with system defaults and toggle overrides.
  */
 @Composable
 fun GbaEmulatorTheme(
     highContrast: Boolean = false,
+    darkModeOverride: Boolean? = null,
     playSurround: PlaySurround = PlaySurround.Black,
     content: @Composable () -> Unit,
 ) {
+    val isSystemDark = isSystemInDarkTheme()
+    val useDark = when (darkModeOverride) {
+        null -> isSystemDark
+        else -> darkModeOverride
+    }
+
     val colorScheme = when {
         highContrast -> FlowframeColorSchemes.highContrastLight
+        useDark -> FlowframeColorSchemes.dark
         else -> FlowframeColorSchemes.light
     }
 
-    CompositionLocalProvider(LocalPlaySurround provides playSurround) {
+    val context = LocalContext.current
+    SideEffect {
+        val activity = context.findActivity()
+        val window = activity?.window
+        if (window != null) {
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = !useDark
+                isAppearanceLightNavigationBars = !useDark
+            }
+        }
+    }
+
+    CompositionLocalProvider(
+        LocalPlaySurround provides playSurround,
+        LocalDarkModeOverride provides darkModeOverride
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = flowframeTypography(),
@@ -49,6 +75,9 @@ fun GbaEmulatorTheme(
     }
 }
 
-/** True when shell should follow system dark (future); currently always light shell. */
+/** True when shell should follow system dark. */
 @Composable
-fun flowframeUseDarkShell(): Boolean = isSystemInDarkTheme()
+fun flowframeUseDarkShell(): Boolean {
+    val override = LocalDarkModeOverride.current
+    return override ?: isSystemInDarkTheme()
+}

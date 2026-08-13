@@ -58,10 +58,19 @@
     <string name="status_no_save_data">No cartridge save data to export.</string>
     <string name="status_persistence_io_failed">Save I/O failed: %1$s</string>
     <string name="status_persistence_import_failed">Import rejected: %1$s</string>
+    <string name="insert_rom_hint">Insert a ROM cartridge to play</string>
+    <string name="play_game">Play Game</string>
+    <string name="saves_and_states">Saves &amp; States</string>
+    <string name="file_manager">File Manager</string>
+    <string name="dark_mode_system">System</string>
+    <string name="dark_mode_light">Light</string>
+    <string name="dark_mode_dark">Dark</string>
     <string name="save_type_none">none</string>
     <string name="save_type_sram">SRAM</string>
     <string name="save_type_flash64">Flash 64K</string>
     <string name="save_type_flash128">Flash 128K</string>
     <string name="save_type_eeprom">EEPROM</string>
     <string name="save_type_ambiguous">ambiguous</string>
+    <string name="privacy_heading">Privacy</string>
+    <string name="privacy_summary">Local-only emulator. No account, no network, no analytics. ROMs and saves stay on your device unless you export them. See PRIVACY.md for details.</string>
 </resources>

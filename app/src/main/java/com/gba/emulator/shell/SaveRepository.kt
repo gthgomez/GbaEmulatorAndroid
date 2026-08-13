@@ -84,21 +84,6 @@ object SaveRepository {
         return null
     }
 
-    private fun InputStream.readBytes(): ByteArray {
-        val buffer = mutableListOf<Byte>()
-        val chunk = ByteArray(8192)
-        while (true) {
-            val read = read(chunk)
-            if (read <= 0) {
-                break
-            }
-            for (i in 0 until read) {
-                buffer.add(chunk[i])
-            }
-        }
-        return buffer.toByteArray()
-    }
-
     private fun OutputStream.write(data: ByteArray) {
         write(data, 0, data.size)
         flush()
