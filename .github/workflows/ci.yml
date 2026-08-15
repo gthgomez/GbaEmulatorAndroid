@@ -13,6 +13,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The app's native build compiles the core engine in from a sibling
+      # repo (app/src/main/cpp/../../../../../GBA_Emulator). Mirror the local
+      # C:\Workspace\Project_Android layout on the runner.
+      - name: Checkout core engine (sibling repo)
+        uses: actions/checkout@v4
+        with:
+          repository: gthgomez/GBA_Emulator
+          ref: fix/state-hash-hotpath
+          path: ../GBA_Emulator
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
