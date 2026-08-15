@@ -8,8 +8,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # libc++_shared and other shared deps inherit the same LOAD segment alignment.
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")
 
-# Project_Android/GbaEmulatorAndroid/app/src/main/cpp -> ../../../../../GBA_Emulator
-set(GBA_EMULATOR_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../../GBA_Emulator")
+# Default: sibling repo layout (C:\Workspace\Project_Android:
+# GbaEmulatorAndroid/app/src/main/cpp -> ../../../../../GBA_Emulator).
+# CI and other layouts can override with the GBA_EMULATOR_ROOT env var.
+if(DEFINED ENV{GBA_EMULATOR_ROOT})
+    set(GBA_EMULATOR_ROOT "$ENV{GBA_EMULATOR_ROOT}")
+else()
+    set(GBA_EMULATOR_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../../GBA_Emulator")
+endif()
 set(GBA_CORE_DIR "${GBA_EMULATOR_ROOT}/src/core")
 set(GBA_INCLUDE_DIR "${GBA_EMULATOR_ROOT}/include")
 
