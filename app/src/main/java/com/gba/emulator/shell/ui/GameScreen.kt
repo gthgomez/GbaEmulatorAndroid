@@ -71,6 +71,7 @@ private const val WARMUP_STREAK_FOR_MESSAGE = 3
 private const val DEBUG_OVERLAY_AUTO_HIDE_MS = 3_000L
 private const val AUDIT_FRAME = 60
 private const val DIAGNOSTICS_SAMPLE_INTERVAL = 30
+private const val PRESENT_PERIODIC_INTERVAL = 300
 private const val PREFS_NAME = "gameplay"
 private const val PREFS_SPEED = "playback_speed"
 private const val NON_ZERO_PIXEL_THRESHOLD = 1_000
@@ -217,6 +218,15 @@ fun GameScreen(
     LaunchedEffect(session, running, pausedByLifecycle, ignoreAbnormalStop, restartGeneration) {
         framePacer.reset()
         auditLogged = false
+        // Present telemetry (logcat only; the playtest CSV format is frozen).
+        var emulatedFrames = 0
+        var presentAttempts = 0
+        var presentedFrames = 0
+        var presentSkippedInvalidSurface = 0
+        var presentLockFailures = 0
+        var presentNanosTotal = 0L
+        var lockCanvasNanosTotal = 0L
+        var nextPeriodicPresentLog = PRESENT_PERIODIC_INTERVAL
         val recycledPixels = ShortArray(GbaRuntimeBridge.FRAMEBUFFER_PIXELS)
         val recycledAudio = ShortArray(1098)
         try {
@@ -241,6 +251,9 @@ fun GameScreen(
                             pixelsDest = recycledPixels,
                             audioDest = recycledAudio
                         ) ?: return@withContext
+                        if (step.frame.status == GbaRuntimeBridge.RuntimeStatus.Ok) {
+                            emulatedFrames += 1
+                        }
                         lastStep = step
                         lastBatchFrames = step.audioBatchSize / 2
                         if (currentAudioMode != AudioPlaybackMode.Mute && step.audioBatchSize > 0) {
@@ -282,11 +295,26 @@ fun GameScreen(
                         } else {
                             null
                         }
-                        withContext(Dispatchers.Default) {
+                        val presentResult = withContext(Dispatchers.Default) {
                             val frameBitmap = viewportController.prepareBitmap(pixels)
                             viewportController.presentOnSurface(frameBitmap)
                         }
-                        hasPresentedFrame = true
+                        presentAttempts += 1
+                        presentNanosTotal += viewportController.lastPresentNanos
+                        lockCanvasNanosTotal += viewportController.lastLockCanvasNanos
+                        when (presentResult) {
+                            PresentResult.Posted -> {
+                                presentedFrames += 1
+                                hasPresentedFrame = true
+                            }
+                            PresentResult.NoHolder, PresentResult.InvalidSurface,
+                            PresentResult.InvalidDimensions -> {
+                                presentSkippedInvalidSurface += 1
+                            }
+                            PresentResult.LockFailed -> {
+                                presentLockFailures += 1
+                            }
+                        }
                         forcedBlankHint = videoDiagnostics?.forcedBlank == true
 
                         val hasVisibleContent = frame.frameComplete ||
@@ -324,6 +352,26 @@ fun GameScreen(
                                 "audit_audio batchFrames=$lastBatchFrames " +
                                     "playbackUnderruns=${audioEngine.playbackUnderruns} " +
                                     "coreUnderruns=${frame.audioUnderruns}",
+                            )
+                            Log.i(
+                                LOG_TAG,
+                                "audit_present emulated=$emulatedFrames presented=$presentedFrames " +
+                                    "skipped=$presentSkippedInvalidSurface " +
+                                    "lockFail=$presentLockFailures " +
+                                    "presentMs=${avgNanosMillis(presentNanosTotal, presentAttempts)} " +
+                                    "lockCanvasMs=${avgNanosMillis(lockCanvasNanosTotal, presentAttempts)}",
+                            )
+                        }
+                        if (emulatedFrames >= nextPeriodicPresentLog) {
+                            nextPeriodicPresentLog += PRESENT_PERIODIC_INTERVAL
+                            Log.i(
+                                LOG_TAG,
+                                "audit_present periodic=$PRESENT_PERIODIC_INTERVAL " +
+                                    "emulated=$emulatedFrames presented=$presentedFrames " +
+                                    "skipped=$presentSkippedInvalidSurface " +
+                                    "lockFail=$presentLockFailures " +
+                                    "presentMs=${avgNanosMillis(presentNanosTotal, presentAttempts)} " +
+                                    "lockCanvasMs=${avgNanosMillis(lockCanvasNanosTotal, presentAttempts)}",
                             )
                         }
 
@@ -659,6 +707,13 @@ private fun hasEnoughNonZeroPixels(
         }
     }
     return false
+}
+
+private fun avgNanosMillis(totalNanos: Long, count: Int): String {
+    if (count <= 0) {
+        return "0.0"
+    }
+    return "%.1f".format(totalNanos.toDouble() / count / 1_000_000.0)
 }
 
 internal fun frameStatusLabel(frame: GbaRuntimeBridge.FrameResult): String {
