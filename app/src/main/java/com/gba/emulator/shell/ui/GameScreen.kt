@@ -70,6 +70,7 @@ private const val LOG_TAG = "FlowframeEmu"
 private const val WARMUP_STREAK_FOR_MESSAGE = 3
 private const val DEBUG_OVERLAY_AUTO_HIDE_MS = 3_000L
 private const val AUDIT_FRAME = 60
+private const val DIAGNOSTICS_SAMPLE_INTERVAL = 30
 private const val PREFS_NAME = "gameplay"
 private const val PREFS_SPEED = "playback_speed"
 private const val NON_ZERO_PIXEL_THRESHOLD = 1_000
@@ -248,21 +249,41 @@ fun GameScreen(
                     }
                 }
 
-                val presented = lastStep ?: break
+                val presented = lastStep
+                if (presented == null) {
+                    if (session.isActive && running && !pausedByLifecycle) {
+                        // Transient null step from an active session: skip this frame instead
+                        // of killing the loop; the next iteration re-attempts.
+                        Log.w(
+                            LOG_TAG,
+                            "step_frame_null_transient slotsDue=${wake.slotsDue} " +
+                                "stepsToRun=$stepsToRun; skipping frame",
+                        )
+                        continue
+                    }
+                    // stepFrameAndPresent returns null only when the session is closed or its
+                    // native handle is gone — a terminal condition.
+                    Log.w(
+                        LOG_TAG,
+                        "loop_exit step_frame_null sessionActive=${session.isActive} " +
+                            "running=$running",
+                    )
+                    break
+                }
                 val frame = presented.frame
                 val pixels = presented.pixels
 
                 when (frame.status) {
                     GbaRuntimeBridge.RuntimeStatus.Ok -> {
-                        val videoDiagnostics = if (BuildConfig.DEBUG) {
+                        val videoDiagnostics = if (BuildConfig.DEBUG &&
+                            frameCount % DIAGNOSTICS_SAMPLE_INTERVAL == 0
+                        ) {
                             session.getVideoDiagnostics()
                         } else {
                             null
                         }
-                        val frameBitmap = withContext(Dispatchers.Default) {
-                            viewportController.prepareBitmap(pixels)
-                        }
-                        withContext(Dispatchers.Main) {
+                        withContext(Dispatchers.Default) {
+                            val frameBitmap = viewportController.prepareBitmap(pixels)
                             viewportController.presentOnSurface(frameBitmap)
                         }
                         hasPresentedFrame = true
@@ -435,8 +456,12 @@ fun GameScreen(
                             showWarmupMessage = false
                             auditLogged = false
                             framePacer.reset()
-                            audioEngine.clear()
-                            audioEngine.preRollSilence()
+                            // Restart the Oboe stream so the restarted session starts from a
+                            // clean ring buffer and reset underrun counters (clear() alone does
+                            // not tear the stream down, which is what made playbackUnderruns
+                            // explode after restart).
+                            audioEngine.stop()
+                            audioEngine.start()
                             running = true
                             restartGeneration += 1
                         }

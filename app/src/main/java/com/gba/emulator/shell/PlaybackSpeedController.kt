@@ -25,7 +25,10 @@ class PlaybackSpeedController(
         }
         return when (speed) {
             PlaybackSpeed.Max -> MAX_STEPS_PER_WALL_TICK
-            else -> speed.multiplier * slotsDue
+            else -> minOf(
+                speed.multiplier * slotsDue,
+                speed.multiplier * MAX_CATCHUP_SLOTS_PER_ITERATION,
+            )
         }
     }
 
@@ -57,5 +60,12 @@ class PlaybackSpeedController(
 
     companion object {
         const val MAX_STEPS_PER_WALL_TICK = 120
+
+        /**
+         * Upper bound on pacer slots honored per frame-loop iteration: a slow loop re-syncs
+         * (at most ~2× one 60 fps frame budget's steps) instead of running an unbounded
+         * catch-up batch that compounds the slowdown.
+         */
+        const val MAX_CATCHUP_SLOTS_PER_ITERATION = 2
     }
 }

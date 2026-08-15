@@ -32,6 +32,20 @@ class PlaybackSpeedControllerTest {
     }
 
     @Test
+    fun catchUpStepsAreCappedPerIteration() {
+        val oneX = PlaybackSpeedController(PlaybackSpeedController.PlaybackSpeed.One)
+        assertEquals(
+            PlaybackSpeedController.MAX_CATCHUP_SLOTS_PER_ITERATION,
+            oneX.stepsForWallSlots(4),
+        )
+        val fourX = PlaybackSpeedController(PlaybackSpeedController.PlaybackSpeed.Four)
+        assertEquals(
+            4 * PlaybackSpeedController.MAX_CATCHUP_SLOTS_PER_ITERATION,
+            fourX.stepsForWallSlots(4),
+        )
+    }
+
+    @Test
     fun cycleWrapsFromMaxToOne() {
         val controller = PlaybackSpeedController(PlaybackSpeedController.PlaybackSpeed.Max)
         assertEquals(PlaybackSpeedController.PlaybackSpeed.One, controller.cycle())

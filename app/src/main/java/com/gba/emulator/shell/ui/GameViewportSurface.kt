@@ -56,8 +56,18 @@ class GameViewportSurfaceController {
         return bitmap
     }
 
+    /**
+     * Draws [frameBitmap] onto the surface. Safe to call from the emulation loop thread
+     * (classic render-thread pattern); bails out without locking when the surface is not
+     * valid (e.g. BLAST buffer starvation or a destroyed SurfaceView) so the caller never
+     * blocks the main thread on [SurfaceHolder.lockCanvas].
+     */
     fun presentOnSurface(frameBitmap: Bitmap) {
         val holder = surfaceHolder ?: return
+        val surface = holder.surface ?: return
+        if (!surface.isValid) {
+            return
+        }
         val canvas = holder.lockCanvas() ?: return
         try {
             val viewWidth = holder.surfaceFrame.width()
