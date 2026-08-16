@@ -16,12 +16,13 @@ jobs:
       # The app's native build compiles the core engine in from
       # $GBA_EMULATOR_ROOT (CMakeLists.txt env override; local default is the
       # sibling repo layout). Check the core out into the workspace and point
-      # the build at it.
+      # the build at it. Pinned to the merged core SHA (a36ebb19, the
+      # state-hash hot-path fix) for reproducible builds — not a feature branch.
       - name: Checkout core engine
         uses: actions/checkout@v7
         with:
           repository: gthgomez/GBA_Emulator
-          ref: fix/state-hash-hotpath
+          ref: a36ebb198db607230936eb3c7417674b7b62fab6
           path: GBA_Emulator
 
       - name: Set up JDK 21
