@@ -11,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The app's native build compiles the core engine in from
       # $GBA_EMULATOR_ROOT (CMakeLists.txt env override; local default is the
       # sibling repo layout). Check the core out into the workspace and point
       # the build at it.
       - name: Checkout core engine
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: gthgomez/GBA_Emulator
           ref: fix/state-hash-hotpath

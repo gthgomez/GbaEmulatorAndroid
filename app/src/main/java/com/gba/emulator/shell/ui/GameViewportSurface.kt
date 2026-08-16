@@ -99,8 +99,10 @@ class GameViewportSurfaceController {
      * Draws [frameBitmap] onto the surface and posts it. Safe to call from the emulation loop
      * thread (classic render-thread pattern); bails out without locking when the surface is not
      * valid (e.g. BLAST buffer starvation or a destroyed SurfaceView) so the caller never blocks
-     * the main thread on [SurfaceHolder.lockCanvas]. Returns [PresentResult.Posted] only when
-     * [SurfaceHolder.unlockCanvasAndPost] actually ran.
+     * the main thread on [SurfaceHolder.lockCanvas]. Note that [Surface.isValid] is not a
+     * zero-wait guarantee: [SurfaceHolder.lockCanvas] can still be throttled while the surface
+     * is available, and a slow lock blocks this (non-main) thread. Returns
+     * [PresentResult.Posted] only when [SurfaceHolder.unlockCanvasAndPost] actually ran.
      */
     fun presentOnSurface(frameBitmap: Bitmap): PresentResult {
         lastPresentNanos = 0L

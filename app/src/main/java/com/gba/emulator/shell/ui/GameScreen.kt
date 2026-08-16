@@ -244,13 +244,21 @@ fun GameScreen(
                 }
 
                 var lastStep: EmulatorSession.PresentedFrameStep? = null
+                // stepFrameAndPresent returns null only when the session is closed or its
+                // native handle is gone. Track it explicitly: a mid-batch null would
+                // otherwise leave `lastStep` pointing at an earlier successful step and
+                // the terminal check below would never fire.
+                var encounteredNullStep = false
                 var lastBatchFrames = 0
                 withContext(Dispatchers.Default) {
                     repeat(stepsToRun) {
                         val step = session.stepFrameAndPresent(
                             pixelsDest = recycledPixels,
                             audioDest = recycledAudio
-                        ) ?: return@withContext
+                        ) ?: run {
+                            encounteredNullStep = true
+                            return@withContext
+                        }
                         if (step.frame.status == GbaRuntimeBridge.RuntimeStatus.Ok) {
                             emulatedFrames += 1
                         }
@@ -263,7 +271,7 @@ fun GameScreen(
                 }
 
                 val presented = lastStep
-                if (presented == null) {
+                if (presented == null || encounteredNullStep) {
                     if (session.isActive && running && !pausedByLifecycle) {
                         // Transient null step from an active session: skip this frame instead
                         // of killing the loop; the next iteration re-attempts.
@@ -315,7 +323,11 @@ fun GameScreen(
                                 presentLockFailures += 1
                             }
                         }
-                        forcedBlankHint = videoDiagnostics?.forcedBlank == true
+                        // Keep the last sampled value: diagnostics only run every
+                        // DIAGNOSTICS_SAMPLE_INTERVAL frames, so null must not clear it.
+                        videoDiagnostics?.let { diagnostics ->
+                            forcedBlankHint = diagnostics.forcedBlank
+                        }
 
                         val hasVisibleContent = frame.frameComplete ||
                             hasEnoughNonZeroPixels(pixels, videoDiagnostics)
