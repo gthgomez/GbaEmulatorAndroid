@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: Build + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The app's native build compiles the core engine in from
+      # $GBA_EMULATOR_ROOT (CMakeLists.txt env override; local default is the
+      # sibling repo layout). Check the core out into the workspace and point
+      # the build at it. Pinned to the merged core SHA (a36ebb19, the
+      # state-hash hot-path fix) for reproducible builds — not a feature branch.
+      - name: Checkout core engine
+        uses: actions/checkout@v7
+        with:
+          repository: gthgomez/GBA_Emulator
+          ref: a36ebb198db607230936eb3c7417674b7b62fab6
+          path: GBA_Emulator
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK components
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager --install "platforms;android-36" "ndk;28.2.13676358" "cmake;3.22.1"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and run unit tests
+        env:
+          GBA_EMULATOR_ROOT: ${{ github.workspace }}/GBA_Emulator
+        run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest

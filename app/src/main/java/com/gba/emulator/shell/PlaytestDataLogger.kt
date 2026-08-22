@@ -1,6 +1,7 @@
 package com.gba.emulator.shell
 
 import android.content.Context
+import android.provider.Settings
 import android.util.Log
 import java.io.File
 import java.io.FileWriter
@@ -30,8 +31,17 @@ class PlaytestDataLogger(private val context: Context) {
     private val queue = ConcurrentLinkedQueue<FrameMetrics>()
     private val executor = Executors.newSingleThreadExecutor()
     private var sessionFile: File? = null
+    private var sessionActive = false
 
     fun startSession(romTitle: String) {
+        sessionActive = Settings.Global.getInt(
+            context.contentResolver,
+            SETTINGS_KEY_PLAYTEST_LOGGING,
+            0,
+        ) != 0
+        if (!sessionActive) {
+            return
+        }
         executor.execute {
             val safeTitle = romTitle.replace(Regex("[^A-Za-z0-9_-]"), "_")
             val timestamp = System.currentTimeMillis()
@@ -50,6 +60,9 @@ class PlaytestDataLogger(private val context: Context) {
     }
 
     fun logFrame(metrics: FrameMetrics) {
+        if (!sessionActive) {
+            return
+        }
         queue.add(metrics)
         if (queue.size >= FLUSH_THRESHOLD) {
             flush()
@@ -91,6 +104,10 @@ class PlaytestDataLogger(private val context: Context) {
     }
 
     fun stopSession() {
+        if (!sessionActive) {
+            return
+        }
+        sessionActive = false
         flush()
         executor.execute {
             Log.i("PlaytestDataLogger", "Stopped playtest logging. File saved: ${sessionFile?.absolutePath}")
@@ -100,5 +117,11 @@ class PlaytestDataLogger(private val context: Context) {
 
     companion object {
         private const val FLUSH_THRESHOLD = 300 // Flush batch every ~5 seconds of 60fps play
+
+        /**
+         * Runtime gate read at session start: `adb shell settings put global
+         * gba_playtest_logging 1` enables per-frame CSV logging (off by default).
+         */
+        private const val SETTINGS_KEY_PLAYTEST_LOGGING = "gba_playtest_logging"
     }
 }
