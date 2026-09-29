@@ -6,4 +6,6 @@ Android development shell for the GBA_Emulator core. Provides a Compose UI with 
 
 **Build:** `.\gradlew.bat :app:assembleDebug`
 
-**Detailed docs:** [CLAUDE.md](CLAUDE.md) | [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | [STATUS.md](STATUS.md) | [QA_CHECKLIST.md](QA_CHECKLIST.md)
+**Project docs:** [STATUS.md](STATUS.md) | [QA_CHECKLIST.md](QA_CHECKLIST.md)
+
+Internal agent notes (not project documentation): [docs/agent/](docs/agent/)
