@@ -14,16 +14,13 @@ jobs:
         uses: actions/checkout@v7
 
       # The app's native build compiles the core engine in from
-      # $GBA_EMULATOR_ROOT (CMakeLists.txt env override; local default is the
-      # sibling repo layout). Check the core out into the workspace and point
-      # the build at it. Pinned to the merged core SHA (a36ebb19, the
-      # state-hash hot-path fix) for reproducible builds — not a feature branch.
-      - name: Checkout core engine
-        uses: actions/checkout@v7
-        with:
-          repository: gthgomez/GBA_Emulator
-          ref: a36ebb198db607230936eb3c7417674b7b62fab6
-          path: GBA_Emulator
+      # $GBA_EMULATOR_ROOT. The core pin lives in core.lock.json (single
+      # source of truth, currently a36ebb19 — the state-hash hot-path fix);
+      # tools/bootstrap-core.py fetches exactly that commit and verifies it.
+      - name: Bootstrap core engine from core.lock.json
+        id: core
+        run: |
+          echo "path=$(python3 tools/bootstrap-core.py --dest "$GITHUB_WORKSPACE/deps/GBA_Emulator")" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -44,5 +41,5 @@ jobs:
 
       - name: Build and run unit tests
         env:
-          GBA_EMULATOR_ROOT: ${{ github.workspace }}/GBA_Emulator
+          GBA_EMULATOR_ROOT: ${{ steps.core.outputs.path }}
         run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest
