@@ -8,4 +8,4 @@ Android development shell for the GBA_Emulator core. Provides a Compose UI with 
 
 **Project docs:** [STATUS.md](STATUS.md) | [QA_CHECKLIST.md](QA_CHECKLIST.md) | [docs/verification.md](docs/verification.md)
 
-Internal agent notes (not project documentation): [docs/agent/](docs/agent/)
+**Agent instructions:** [AGENTS.md](AGENTS.md); technical context in [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) (task data).
