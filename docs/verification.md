@@ -15,32 +15,38 @@ The app builds against the sibling `GBA_Emulator` C++ core. The CI workflow
 
 ```
 repository: gthgomez/GBA_Emulator
-ref:        a36ebb198db607230936eb3c7417674b7b62fab6
+ref:        ed73298b81c80371c0d661fe11c18d987f66d20e
 ```
 
-- Pin exists in the core repo: `a36ebb198db607230936eb3c7417674b7b62fab6`
-  ("Merge pull request #3 from gthgomez/fix/state-hash-hotpath").
+- Pin exists in the core repo: `ed73298b81c80371c0d661fe11c18d987f66d20e`
+  ("fix(ppu): bypass windowing when no window is enabled in DISPCNT (issue #15)").
 - Local sibling working tree (`/home/linuxuser/GBA_Emulator`) is on `main`
   at `628d57e`, with unrelated uncommitted edits. **It was left untouched.**
 - CI-faithful builds used a separate clone checked out at the pin
   (`/tmp/opencode/gba-core-pinned`) via `GBA_EMULATOR_ROOT`.
 - **The pin must not be changed** without a corresponding core-verified change.
 
-### 2026-10-06 pin reconciliation
+### 2026-10-06 pin reconciliation — RESOLVED same day
 
-Core `main` has since advanced to `9f7436a` (20 commits ahead of the pin,
-verifier suite 30/30 PASS, 11/13 mGBA suites green). The pin is **deliberately
-left at `a36ebb19`**: that revision is the newest core whose real-game video
-rendering is verified. Core commits `6785fcc`..`9f7436a` (hardware-timing
-Phase 1) introduced a real-game render regression — Pokemon Emerald renders
-uniform black from ~frame 30 while all verifier suites stay green — bisected
-and documented in core repo issue
-[gthgomez/GBA_Emulator#15](https://github.com/gthgomez/GBA_Emulator/issues/15)
-(evidence: `docs/evidence/2026-10-06-emerald-video-regression-bisect.md`).
+The deferral below is superseded: the core regression was root-caused to the
+renderer rewrite in core `9755c99` (window mask applied while windowing
+disabled) and fixed by core PR
+[gthgomez/GBA_Emulator#17](https://github.com/gthgomez/GBA_Emulator/pull/17)
+(`ed73298`). Core issue
+[#15](https://github.com/gthgomez/GBA_Emulator/issues/15) is closed with
+verification: frames 0-31 of the Emerald lab run match the pre-regression
+core bit-exact, and the 2026-08-14 evidence CRCs reproduce verbatim. The pin
+is now `ed73298` per the original re-bump criteria.
 
-Re-bump the pin to the then-current core `main` only after that issue is
-closed and the desktop lab (`gba-desktop --headless`) confirms restored
-real-game framebuffer content.
+### 2026-10-06 pin reconciliation (historical)
+
+Core `main` had advanced to `9f7436a` (20 commits ahead of the pin,
+verifier suite 30/30 PASS, 11/13 mGBA suites green). The pin was
+**deliberately left at `a36ebb19`**: that revision was the newest core whose
+real-game video rendering was verified. A real-game render regression
+(Pokemon Emerald rendering uniform black from ~frame 30 while all verifier
+suites stayed green) was tracked in core issue
+[gthgomez/GBA_Emulator#15](https://github.com/gthgomez/GBA_Emulator/issues/15).
 
 ## 2. JVM unit tests (fresh, not from cache)
 

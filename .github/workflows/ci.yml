@@ -15,7 +15,7 @@ jobs:
 
       # The app's native build compiles the core engine in from
       # $GBA_EMULATOR_ROOT. The core pin lives in core.lock.json (single
-      # source of truth, currently a36ebb19 — the state-hash hot-path fix);
+      # source of truth, currently ed73298 — the issue-#15 windowing fix);
       # tools/bootstrap-core.py fetches exactly that commit and verifies it.
       - name: Bootstrap core engine from core.lock.json
         id: core
