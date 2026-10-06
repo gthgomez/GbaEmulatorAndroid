@@ -111,8 +111,13 @@ Java_com_gba_emulator_shell_GbaCoreBridge_nativeRun(JNIEnv* env, jclass, jlong h
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_gba_emulator_shell_GbaCoreBridge_nativeStateHash(JNIEnv*, jclass, jlong handle) {
-  return static_cast<jlong>(
-      gba::core::gba_android_core_state_hash(reinterpret_cast<void*>(handle)));
+  std::uint64_t hash = 0;
+  if (gba::core::gba_android_core_state_hash(reinterpret_cast<void*>(handle),
+                                             &hash) !=
+      gba::core::AndroidBridgeStatus::ok) {
+    return static_cast<jlong>(0);
+  }
+  return static_cast<jlong>(hash);
 }
 
 // --- GbaRuntimeBridge (AndroidRuntime) ---

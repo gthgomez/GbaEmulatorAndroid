@@ -2,12 +2,16 @@
   "schema_version": 1,
   "core": {
     "repository": "https://github.com/gthgomez/GBA_Emulator.git",
-    "commit": "a36ebb198db607230936eb3c7417674b7b62fab6",
-    "commit_source": "Preserved from the pre-lock CI literal in .github/workflows/ci.yml ('Checkout core engine' step): merged core SHA a36ebb19, the state-hash hot-path fix. Changed nothing about which core is tested.",
+    "commit": "ed73298b81c80371c0d661fe11c18d987f66d20e",
+    "commit_source": "Bumped to core main ed73298 (2026-10-06): real-game video regression fix (windowing bypass, GBA_Emulator#17/#15). Previous pin a36ebb19 was held back pending this fix. Re-bump criteria in docs/verification.md satisfied: issue closed + desktop lab confirms restored real-game framebuffer content.",
     "abi_contract": "include/gba/core/android_core_bridge.hpp",
     "build_options": {
       "cxx_standard": 17,
-      "compile_options": ["-Wall", "-Wextra", "-O3"],
+      "compile_options": [
+        "-Wall",
+        "-Wextra",
+        "-O3"
+      ],
       "android_page_alignment": "16KB: -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384",
       "notes": "Options mirror app/src/main/cpp/CMakeLists.txt, which compiles the core sources directly into libgbaemulator.so."
     }
