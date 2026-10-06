@@ -26,6 +26,22 @@ ref:        a36ebb198db607230936eb3c7417674b7b62fab6
   (`/tmp/opencode/gba-core-pinned`) via `GBA_EMULATOR_ROOT`.
 - **The pin must not be changed** without a corresponding core-verified change.
 
+### 2026-10-06 pin reconciliation
+
+Core `main` has since advanced to `9f7436a` (20 commits ahead of the pin,
+verifier suite 30/30 PASS, 11/13 mGBA suites green). The pin is **deliberately
+left at `a36ebb19`**: that revision is the newest core whose real-game video
+rendering is verified. Core commits `6785fcc`..`9f7436a` (hardware-timing
+Phase 1) introduced a real-game render regression — Pokemon Emerald renders
+uniform black from ~frame 30 while all verifier suites stay green — bisected
+and documented in core repo issue
+[gthgomez/GBA_Emulator#15](https://github.com/gthgomez/GBA_Emulator/issues/15)
+(evidence: `docs/evidence/2026-10-06-emerald-video-regression-bisect.md`).
+
+Re-bump the pin to the then-current core `main` only after that issue is
+closed and the desktop lab (`gba-desktop --headless`) confirms restored
+real-game framebuffer content.
+
 ## 2. JVM unit tests (fresh, not from cache)
 
 Run with the test task forced to re-execute (`--rerun`) so the result is not a
