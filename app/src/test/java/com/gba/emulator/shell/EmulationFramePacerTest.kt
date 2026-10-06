@@ -38,6 +38,17 @@ class EmulationFramePacerTest {
     }
 
     @Test
+    fun longStallIsCappedAtMaxCatchupSlots() {
+        val pacer = EmulationFramePacer()
+        pacer.onWake(0L)
+        // A multi-second stall must not schedule an unbounded slot batch.
+        val wake = pacer.onWake(EmulationFramePacer.GBA_FRAME_NS * 1000L)
+        assertEquals(4, wake.slotsDue)
+        assertTrue(wake.behindSchedule)
+        assertEquals(EmulationFramePacer.GBA_FRAME_NS * 4L, wake.wallDeltaNs)
+    }
+
+    @Test
     fun resetClearsAccumulator() {
         val pacer = EmulationFramePacer()
         pacer.onWake(0L)
