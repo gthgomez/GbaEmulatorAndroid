@@ -226,13 +226,6 @@ void GbaApuAudioOutput::enqueue_interleaved_pcm16(const std::int16_t* samples,
   holder_->ring.enqueue_interleaved_pcm16(samples, frame_count);
 }
 
-void GbaApuAudioOutput::clear() {
-  if (holder_ == nullptr) {
-    return;
-  }
-  holder_->ring.clear();
-}
-
 std::size_t GbaApuAudioOutput::available_frames() const {
   if (holder_ == nullptr) {
     return 0;

@@ -24,7 +24,8 @@ stack, build commands, and technical background.
   inconsistent state.
 - **SAF Open ROM** validates the GBA header + complement before native load.
 - **Process lifecycle:** `GameScreen` must call `notifyEmulationPaused` on pause and
-  flush cartridge save; audio ring clear + pre-roll on resume.
+  flush cartridge save; the Oboe stream is stopped on pause and restarted (with silence
+  pre-roll) on resume — never clear the ring while the data callback is live.
 - **Save states:** versioned codec with deterministic hashes; the hash is checked
   immediately after restore, not after another step.
 - **Frame pacing:** targets ~59.727 Hz with direct-select speed chips (1x–4x + Max) and
@@ -56,7 +57,8 @@ stack, build commands, and technical background.
 - `GameViewportSurface` uses `SurfaceView` + `Canvas.drawBitmap` as the primary
   viewport; the Home-screen Compose `Image` preview is for development only.
 - Oboe audio uses an SPSC (single-producer single-consumer) ring buffer with a data
-  callback; audio state must be cleared on pause and pre-rolled on resume.
+  callback; the stream is stopped on pause and restarted (with silence pre-roll) on
+  resume. Never reset the ring while the data callback is live.
 - `BridgeSelfTest` uses the same synthetic 12-byte ROM as
   `android_core_bridge_test.cpp` in `GBA_Emulator`.
 

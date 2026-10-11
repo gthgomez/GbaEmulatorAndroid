@@ -125,12 +125,19 @@ fun GameScreen(
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
                     pausedByLifecycle = true
-                    audioEngine.clear()
+                    // Tear the stream down rather than clearing the live ring: the Oboe data
+                    // callback owns the read cursor, so clearing mid-stream races the consumer.
+                    // stop() frees the holder and aborts the callback; start() rebuilds it.
+                    audioEngine.stop()
                     session.notifyEmulationPaused()
                 }
                 Lifecycle.Event.ON_START -> {
                     pausedByLifecycle = false
-                    audioEngine.preRollSilence()
+                    // Resume reopens the stream, which can fail (HAL contention). Surface it
+                    // instead of leaving playback silently dead.
+                    if (!audioEngine.start()) {
+                        Log.w(LOG_TAG, "audio_resume_stream_failed; playback stays silent until restarted")
+                    }
                 }
                 else -> Unit
             }
@@ -517,9 +524,8 @@ fun GameScreen(
                             auditLogged = false
                             framePacer.reset()
                             // Restart the Oboe stream so the restarted session starts from a
-                            // clean ring buffer and reset underrun counters (clear() alone does
-                            // not tear the stream down, which is what made playbackUnderruns
-                            // explode after restart).
+                            // fresh ring buffer and reset underrun counters — reusing the old
+                            // stream is what made playbackUnderruns carry over after restart.
                             audioEngine.stop()
                             audioEngine.start()
                             running = true

@@ -338,11 +338,6 @@ Java_com_gba_emulator_shell_ApuAudioEngine_nativeEnqueueBatch(JNIEnv* env, jclas
   env->ReleaseShortArrayElements(pcm_interleaved, elements, JNI_ABORT);
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_gba_emulator_shell_ApuAudioEngine_nativeClear(JNIEnv*, jclass) {
-  GbaApuAudioOutput::instance().clear();
-}
-
 extern "C" JNIEXPORT jint JNICALL
 Java_com_gba_emulator_shell_ApuAudioEngine_nativeAvailableFrames(JNIEnv*, jclass) {
   return static_cast<jint>(GbaApuAudioOutput::instance().available_frames());
