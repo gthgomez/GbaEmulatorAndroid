@@ -2,7 +2,7 @@ package com.gba.emulator.shell
 
 /**
  * Oboe-backed playback for stereo PCM16 batches at [SAMPLE_RATE_HZ] (GBA APU contract).
- * Emulation pushes PCM into a native ring buffer; Oboe pulls via [AudioStreamDataCallback].
+ * Emulation pushes PCM into a native ring buffer; Oboe pulls it via a data callback.
  *
  * Every method fans out to the single process-wide native stream (a raw holder pointer plus an
  * SPSC ring owned by the Oboe data callback). The frame loop pushes batches from a background

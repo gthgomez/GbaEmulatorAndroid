@@ -132,8 +132,8 @@ manual on-device checks only.
 | --- | --- | --- |
 | Frame pacing | `EmulationFramePacerTest`, `PlaybackSpeedControllerTest` | NOT RUN (120 Hz overlay, real frame ms) |
 | ROM video gate | `FramebufferVideoMetricsTest` (analysis only) | NOT RUN (`RomVideoSelfTest`, needs pushed ROM) |
-| Audio | none (JNI/device only) | NOT RUN (`RuntimeSelfTest` audio assertions; Oboe stream) |
-| Lifecycle (pause/resume/Home) | none | NOT RUN |
+| Audio | `ApuAudioEngineTest` (engine serialization/lifecycle policy; no native) | NOT RUN (`RuntimeSelfTest` audio assertions; Oboe stream) |
+| Lifecycle (pause/resume/Home) | `ApuAudioEngineTest` (engine stop/restart policy) | NOT RUN |
 | Soak (≥60 s, leak trend) | none | NOT RUN |
 
 Execute `GBA_Emulator/docs/android-device-soak-checklist.md` on a physical
@@ -161,12 +161,14 @@ Kotlin engine, the native `GbaApuAudioOutput::clear()`, the
 `Java_com_gba_emulator_shell_ApuAudioEngine_nativeClear` JNI entry, and the Kotlin
 `preRollSilence()` (start() pre-rolls internally).
 
-An independent adversarial review of this diff found no high-severity defect (every JNI entry is
-reached only under the lock; no deadlock; the `clear()` removal is complete; the settings
-re-application cannot interleave). Its Medium finding — that a failed stream reopen on resume was
-ignored — is now handled by the `audio_resume_stream_failed` log above; the reviewer notes the
-lock is held across the (main-thread) native stream open/close, which is accepted for this dev
-shell since it only occurs on pause/resume.
+Three independent reviewers (concurrency/lifecycle, Kotlin API/tests, C++/JNI) confirmed this
+diff introduces no high-severity defect: every JNI entry is reached only under the lock, there is
+no lock-ordering cycle, the `clear()` removal is complete, and the settings re-application cannot
+interleave. Their in-scope findings were addressed: the resume-reopen failure is now logged, the
+settings-survival test is no longer vacuous, and the reset of the fresh ring moved before
+`requestStart()` so the ring is never mutated while the callback is live. The lock is held across
+the (main-thread) native stream open/close, accepted for this dev shell since it only occurs on
+pause/resume.
 
 ### Host verification (PASS)
 
@@ -194,3 +196,20 @@ overlapping native calls); restoring the lock passes. The source was restored by
 - `RuntimeSelfTest` audio assertions and the `android-device-soak-checklist.md` soak.
 
 These require a physical device and remain NOT RUN; no device qualification is claimed.
+
+### Residual findings (pre-existing; NOT changed by this PR)
+
+The review surfaced pre-existing issues in the audio path, outside this change's scope and not
+validated on a device:
+
+- **High (pre-existing):** `GbaApuRingBuffer::enqueue_interleaved_pcm16` advances the consumer's
+  `read_pos_` when dropping oldest samples on ring overflow, so `read_pos_` briefly has two
+  writers (Kotlin producer + Oboe callback). A lost update can move `read_pos_` backward and
+  re-read slots the producer is overwriting. Reachable under Steady Music fast-forward (producer
+  2×–8× vs a 1× consumer). This needs a ring redesign plus TSAN/device validation and is **not**
+  changed here (out of scope: it predates this PR and touches the ring algorithm).
+- **Low (latent):** the `ApuAudioEngine` lock guards per-instance state while the native output is
+  a process singleton; a second concurrently-composed engine would not be serialized. The app
+  constructs one engine at a time.
+- **Low:** a failed resume reopen leaves playback silent until the next background/foreground
+  cycle (`audio_resume_stream_failed` is logged).

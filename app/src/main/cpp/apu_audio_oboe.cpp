@@ -169,6 +169,10 @@ bool GbaApuAudioOutput::start() {
 
   auto* holder = new StreamHolderImpl();
   holder_ = holder;
+  // Reset the fresh holder before the data callback can run: never mutate the ring cursors
+  // while the callback is live.
+  holder->playback_underruns.store(0, std::memory_order_relaxed);
+  holder->ring.clear();
 
   oboe::AudioStreamBuilder builder;
   builder.setDirection(oboe::Direction::Output)
@@ -198,8 +202,6 @@ bool GbaApuAudioOutput::start() {
     return false;
   }
 
-  holder->playback_underruns.store(0, std::memory_order_relaxed);
-  holder->ring.clear();
   return true;
 }
 

@@ -42,6 +42,10 @@ class ApuAudioEngineTest {
         override fun stopStream() {
             enter()
             stopCalls.incrementAndGet()
+            // stop() frees the native holder, which owns the stream settings: model that so the
+            // settings-survival test cannot pass on stale values.
+            lastSteadyMusic = null
+            lastPlaybackRate = null
         }
 
         override fun enqueue(samples: ShortArray, size: Int) {
