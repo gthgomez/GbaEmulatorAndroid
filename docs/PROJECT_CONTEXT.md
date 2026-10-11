@@ -41,7 +41,7 @@ Open `Project_Android` in Android Studio for composite workspace, or open this f
 - **GameScreen** primary viewport: `GameViewportSurface` (`SurfaceView` + `Canvas.drawBitmap`); Home dev preview still uses Compose `Image`
 - Oboe ring-buffer audio (SPSC + data callback), `EmulationFramePacer` (~59.727 Hz), direct-select speed chips 1×–4× + Max, Steady Music mode
 - Cartridge save + save-state SAF export/import
-- Process lifecycle pause on `GameScreen` (`notifyEmulationPaused` + cartridge save flush; audio ring clear + pre-roll on resume)
+- Process lifecycle pause on `GameScreen` (`notifyEmulationPaused` + cartridge save flush; Oboe stream stop on pause, restart + pre-roll on resume)
 - Debug overlay (frame ms, PC, cycle delta, speed, batch size, stop reason, PPU `DISPCNT`/non-zero/sample), restart, continue-on-abnormal (debug builds)
 - `nativeGetCartridgeMetadata` for title/game code/save type after load
 
